@@ -147,3 +147,1894 @@ During upload of crafted fence files with invalid `param1` values:
 - MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION (5002)
 - MAV_CMD_NAV_FENCE_CIRCLE_EXCLUSION (5003)
 - MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION (5004)"
+11,ArduCopter: fix spelling in FS_EKF_ACTION param description,Hard, 
+12,Fix 403 forbidden error in find_geocoder_location (SITL),Hard, 
+13,SIGFPE via incorrect type conversion on fence file upload,Hard,"## Bug report
+
+**Issue details**
+A **SIGFFPE** signal is raised in functions **_convert_MISSION_ITEM_INT_to_AC_PolyFenceI_item_int_** ([MissionItemProtocol_Fence.cpp](https://github.com/ArduPilot/ardupilot/blob/master/libraries/GCS_MAVLink/MissionItemProtocol_Fence.cpp)) and/or _**is_positive**_ ([AP_Math.h)](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Math/AP_Math.cpp)) during an attempted upload of a crafted fence files with invalid values of parameter **_param1_**. Floating point exception occurs due to unchecked type conversions, leading to immediate autopilot process termination and loss of GCS – vehicle communication. 
+
+
+**Steps to reproduce**
+Vulnerability can be triggered by uploading fence files with parameters set to invalid values:
+
+1. **_fence-oor.txt_** – with **_param1_** set to “_**-1e+10**_” (minus 10 billion)
+```
+QGC WPL 110
+0	0	0	5001	-1e+10		0	0	0	0	0	0	0
+```
+2. _**fence-nan.txt**_  - with **_param1_** set to “_NaN_” (Not-a-Number)
+```
+QGC WPL 110
+0	0	0	5003	 NaN		0	0	0	0	0	0	0
+```
+To reproduce the vulnerability for ArduCopter in SITL environment, follow below steps:
+
+1. Run SITL simulation for ArduCopter in debug mode
+    `$ Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w -D -G -ubsan`
+
+2. Wait for vehicle to initialize into PreArm state
+   `pre-arm good`
+
+3. Upload one of the fence files to the vehicle using MAVProxy GCS console
+```
+> fence load fence-oor.txt
+> fence load fence-nan.txt
+```
+
+4. Observe GCS connection and vehicle process termination
+
+```
+Sent all 1 fence items
+no link
+link 1 down
+```
+
+Exception raised for **_fence-oor.txt_** 
+```
+Thread 1 ""arducopter"" received signal SIGFPE, Arithmetic exception.
+MissionItemProtocol_Fence::convert_MISSION_ITEM_INT_to_AC_PolyFenceItem (mission_item_int=..., ret=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol_Fence.cpp:117
+117             ret.vertex_count = mission_item_int.param1;
+(gdb) print ret.vertex_count
+$5 = 0 '\000'
+(gdb) print mission_item_int.param1
+$6 = -1e+10
+
+```
+
+Exception raised for **_fence-nan.txt_**
+```
+Thread 1 ""arducopter"" received signal SIGFPE, Arithmetic exception.
+0x00005555555cd03c in is_positive<float> (fVal1=nan(0x400000)) at ../../libraries/AP_Math/AP_Math.h:68
+68          return (static_cast<float>(fVal1) >= FLT_EPSILON);
+(gdb) print fVal1
+$7 = nan(0x400000)
+```
+
+Backtrace shows that both input files had a similar effect upon upload, resulting in the FPE due to unchecked type conversions, but raised in different parts of the code:
+
+1. **_fence-oor.txt_** - function **_convert_MISSION_ITEM_INT_to_AC_PolyFenceI_item_int_** responsible for converting MAVLink mission item into an **_AC_PolyFenceItem_** structure,
+performs an unchecked assignment of **_param1_** value to **_vertex_count_** of type _uint_8_t_.
+2. **_fence-nan.txt_** - function **_is_positive_**, which simply checks whether a float is greater than zero, makes a float-to-NaN comparison between **_fVal1_** (holding _**param1**_ value) and **_FLT_EPSILON_** (of type float), which raises floating-point operation exception. 
+
+**Root cause**
+The root cause of this vulnerability is the lack of sufficient validation of parameters carried by **_param1_**, allowing out-of-range or non-numerical values to trigger an unhandled exception. Existing sanitization routine performs none or minimal input validation by doing only upper bound check (>255) for selected parameters, making it highly insufficient. 
+Also keep in mind that demonstrated examples exploit only single case for specific 
+commands (5001 and 5003), but the same vulnerability is present in all fence-specific commands:
+
+- _MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION_  (5001) for  **_vertex_count_** =<(_-1e+10_)
+- _MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION_  (5002) for **_vertex_count_** =<(_-1e+10_)
+- _MAV_CMD_NAV_FENCE_CIRCLE_EXCLUSION_  (5003) for **_radius_** == _NaN_
+- _MAV_CMD_NAV_FENCE_CIRCLE_EXCLUSION_  (5004) for **_radius_** == _NaN_
+
+
+**Impact**
+The impact of this vulnerability is severe, affecting both operational reliability and flight safety across all ArduPilot vehicles. When an attacker in the network or unintentional operator uploads improperly constructed fence file, the autopilot software immediately crashes due to unhandled exception. As a direct result, the connection between the GCS and the vehicle is abruptly lost, so any ongoing automated mission is terminated. For vehicle in the air, this loss of control may lead to dangerous situations including uncontrolled flight, failure to perform failsafe procedures, or even a crash.
+
+**Recommendation**
+Enforce strict input validation and bounds checking on all externally supplied fence parameters before they are stored or used in arithmetic operations.
+
+**Version**
+_4.6.3_
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[X] Copter
+[X] Plane
+[X] Rover
+[X] Submarine
+
+
+**Logs**
+
+Backtrace for **_fence_oor.txt_**
+```
+#0  MissionItemProtocol_Fence::convert_MISSION_ITEM_INT_to_AC_PolyFenceItem (mission_item_int=..., ret=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol_Fence.cpp:117
+#1  0x000055555595b877 in MissionItemProtocol_Fence::replace_item (this=0x555555b79260, mission_item_int=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol_Fence.cpp:155
+#2  0x000055555595ad8b in MissionItemProtocol::handle_mission_item (this=0x555555b79260, msg=..., cmd=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol.cpp:291
+#3  0x000055555570e1a3 in GCS_MAVLINK::handle_mission_item (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1028
+#4  0x0000555555715f2a in GCS_MAVLINK::handle_common_mission_message (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4694
+#5  0x0000555555715a60 in GCS_MAVLINK::handle_message (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4425
+#6  0x00005555555d224e in GCS_MAVLINK_Copter::handle_message (this=0x555555b84ea0, msg=...) at ../../ArduCopter/GCS_MAVLink_Copter.cpp:1250
+#7  0x000055555570f96b in GCS_MAVLINK::raw_packetReceived (this=0x555555b84ea0, framing_status=1 '\001', status=..., msg=...)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1924
+#8  0x000055555570fbcb in GCS_MAVLINK::update_receive (this=0x555555b84ea0, max_time_us=1000) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1976
+#9  0x0000555555711aaa in GCS::update_receive (this=0x555555ae4030 <copter+40240>) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:2797
+#10 0x00005555555cd930 in Functor<void>::method_wrapper<GCS, &GCS::update_receive> (obj=0x555555ae4030 <copter+40240>)
+    at ../../libraries/AP_HAL/utility/functor.h:88
+#11 0x0000555555684774 in Functor<void>::operator() (this=0x555555aa6980 <Copter::scheduler_tasks+1344>) at ../../libraries/AP_HAL/utility/functor.h:54
+#12 0x00005555556e72dd in AP_Scheduler::run (this=0x555555ada458 <copter+344>, time_available=2500) at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:270
+#13 0x00005555556e778e in AP_Scheduler::loop (this=0x555555ada458 <copter+344>) at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:399
+#14 0x00005555556ed841 in AP_Vehicle::loop (this=0x555555ada300 <copter>) at ../../libraries/AP_Vehicle/AP_Vehicle.cpp:559
+#15 0x000055555583d4b8 in HAL_SITL::run (this=0x555555af6860 <hal_sitl_inst>, argc=12, argv=0x7fffffffdb68, callbacks=0x555555ada300 <copter>)
+    at ../../libraries/AP_HAL_SITL/HAL_SITL_Class.cpp:298
+#16 0x00005555555cce9f in main (argc=12, argv=0x7fffffffdb68) at ../../ArduCopter/Copter.cpp:997
+```
+
+
+Backtrace for **_fence-nan.txt_**
+```
+#0  0x00005555555cd03c in is_positive<float> (fVal1=nan(0x400000)) at ../../libraries/AP_Math/AP_Math.h:68
+#1  0x00005555557751f7 in AC_PolyFence_loader::validate_fence (this=0x555555adfa60 <copter+22368>, new_items=0x555555b78370, count=1)
+    at ../../libraries/AC_Fence/AC_PolyFence_loader.cpp:1032
+#2  0x000055555577554f in AC_PolyFence_loader::write_fence (this=0x555555adfa60 <copter+22368>, new_items=0x555555b78370, count=1)
+    at ../../libraries/AC_Fence/AC_PolyFence_loader.cpp:1110
+#3  0x000055555595ba9c in MissionItemProtocol_Fence::complete (this=0x555555b79260, _link=...) at ../../libraries/GCS_MAVLink/MissionItemProtocol_Fence.cpp:192
+#4  0x000055555595af40 in MissionItemProtocol::transfer_is_complete (this=0x555555b79260, _link=..., msg=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol.cpp:325
+#5  0x000055555595ae63 in MissionItemProtocol::handle_mission_item (this=0x555555b79260, msg=..., cmd=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol.cpp:312
+#6  0x000055555570e1a3 in GCS_MAVLINK::handle_mission_item (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1028
+#7  0x0000555555715f2a in GCS_MAVLINK::handle_common_mission_message (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4694
+#8  0x0000555555715a60 in GCS_MAVLINK::handle_message (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4425
+#9  0x00005555555d224e in GCS_MAVLINK_Copter::handle_message (this=0x555555b84ea0, msg=...) at ../../ArduCopter/GCS_MAVLink_Copter.cpp:1250
+#10 0x000055555570f96b in GCS_MAVLINK::raw_packetReceived (this=0x555555b84ea0, framing_status=1 '\001', status=..., msg=...)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1924
+#11 0x000055555570fbcb in GCS_MAVLINK::update_receive (this=0x555555b84ea0, max_time_us=1000) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1976
+#12 0x0000555555711aaa in GCS::update_receive (this=0x555555ae4030 <copter+40240>) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:2797
+#13 0x00005555555cd930 in Functor<void>::method_wrapper<GCS, &GCS::update_receive> (obj=0x555555ae4030 <copter+40240>)
+    at ../../libraries/AP_HAL/utility/functor.h:88
+#14 0x0000555555684774 in Functor<void>::operator() (this=0x555555aa6980 <Copter::scheduler_tasks+1344>) at ../../libraries/AP_HAL/utility/functor.h:54
+#15 0x00005555556e72dd in AP_Scheduler::run (this=0x555555ada458 <copter+344>, time_available=2500) at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:270
+#16 0x00005555556e778e in AP_Scheduler::loop (this=0x555555ada458 <copter+344>) at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:399
+#17 0x00005555556ed841 in AP_Vehicle::loop (this=0x555555ada300 <copter>) at ../../libraries/AP_Vehicle/AP_Vehicle.cpp:559
+#18 0x000055555583d4b8 in HAL_SITL::run (this=0x555555af6860 <hal_sitl_inst>, argc=12, argv=0x7fffffffdb68, callbacks=0x555555ada300 <copter>)
+    at ../../libraries/AP_HAL_SITL/HAL_SITL_Class.cpp:298
+#19 0x00005555555cce9f in main (argc=12, argv=0x7fffffffdb68) at ../../ArduCopter/Copter.cpp:997
+```"
+14,SIGFPE via incorrect type conversion on mission file upload,Hard,"## Bug report
+
+**Issue details**
+
+A **SIGFFPE** signal is raised in the function **_mavlink_int_to_mission_cmd_** ([AP_Mission.cpp](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mission/AP_Mission.cpp))  during an attempted upload of a crafted mission file with invalid values of parameter **_param1_**.
+Floating point exception occurs due to unchecked float-to-integer type conversion, leading to immediate autopilot process termination and loss of Ground Control Station (GCS)   – vehicle communication.
+
+**Steps to reproduce**
+
+Vulnerability is triggered by uploading mission file with **_param1_** set to out-of-range value. 
+That leads to failure during unchecked _**float**_ (32 bit) to **_uint_16_t_** (16 bit) conversion in _**mavlink_int_to_mission_cmd**_ ([AP_Mission.cpp](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mission/AP_Mission.cpp))  function. Below demonstration uses a sample crafted mission file following plain-text format, with param1 set to **_1e+10_** (10 billion), that was uploaded to ArduCopter using MAVProxy _**wp load**_ method. 
+
+```
+QGC WPL 110
+0	0	0	0	1e+10	0	0	0	0	0	0	0
+```
+To reproduce the vulnerability for ArduCopter in SITL environment, follow below steps:
+
+1. Run SITL simulation for ArduCopter in debug mode
+    `$ Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w -D -G `
+2. Wait for vehicle to initialize into PreArm state
+     `pre-arm good`
+3. Upload mission file to the vehicle using MAVProxy GCS console
+    `> wp load mission.txt`
+4. Observe GCS connection and vehicle process termination
+```
+Sent all 1 waypoints
+no link
+link 1 down
+```
+
+```
+Thread 1 ""arducopter"" received signal SIGFPE, Arithmetic exception.
+AP_Mission::mavlink_int_to_mission_cmd (packet=..., cmd=...)
+    at ../../libraries/AP_Mission/AP_Mission.cpp:1103
+1103            cmd.p1 = packet.param1;
+(gdb) print cmd.p1
+$1 = 0
+(gdb) print packet.param1
+$2 = 1e+10
+```
+
+
+**Root cause**
+
+Backtrace of the error shows that insecure type conversion occurs within the **_mavlink_int_to_mission_cmd_**   ([AP_Mission.cpp](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mission/AP_Mission.cpp)) function, which converts MAVLink message into a **_Mission_Command_** object to be stored in EEPROM vehicle memory. SIGFPE signal is raised at line 1103 due to an arithmetic exception caused by an unsafe assignment between mismatched types with vastly different ranges.
+- **_packet.param1_** is a 32-bit float
+- **_cmd.p1_** is a 16-bit unsigned integer
+
+The root cause of this vulnerability is the lack of sufficient bounds checking on **_param1_** prior to type conversion, allowing out-of-range values to trigger a hardware exception. Existing sanitization function **_sanity_check_params_** only performs minimal validation by rejecting infinite or selectively NaN values for parameters 1–4 and does not enforce any command-specific numeric ranges or limits, making this protection highly insufficient.
+
+
+**Impact**
+The impact of this vulnerability is severe, affecting both operational reliability and flight safety across all affected ArduPilot vehicles including ArduCopter, ArduRover and ArduSub. When an attacker in the network or unintentional operator uploads improperly constructed mission file, the autopilot software immediately crashes due to unhandled exception.  As a direct result, the connection between the GCS and the vehicle is abruptly lost, so any ongoing automated mission is terminated. For vehicle in the air, this loss of control may lead to dangerous situations including uncontrolled flight, failure to perform failsafe procedures, or even a crash.
+
+
+**Recommendations**
+Enforce strict input validation and bounds checking on all externally supplied mission parameters before they are stored or used in arithmetic operations.
+
+
+**Version**
+_4.6.3_
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[X] Copter
+[X] Plane
+[X] Rover
+[X] Submarine
+
+
+**Logs**
+
+Backtrace of the error:
+```
+(gdb) bt
+#0  AP_Mission::mavlink_int_to_mission_cmd (packet=..., cmd=...)
+    at ../../libraries/AP_Mission/AP_Mission.cpp:1103
+#1  0x000055555595c58b in MissionItemProtocol_Waypoints::replace_item (
+    this=0x555555b791e0, mission_item_int=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol_Waypoints.cpp:106
+#2  0x000055555595ad8b in MissionItemProtocol::handle_mission_item (
+    this=0x555555b791e0, msg=..., cmd=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol.cpp:291
+#3  0x000055555570e1a3 in GCS_MAVLINK::handle_mission_item (
+    this=0x555555b84ea0, msg=...)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1028
+#4  0x0000555555715f2a in GCS_MAVLINK::handle_common_mission_message (
+    this=0x555555b84ea0, msg=...)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4694
+#5  0x0000555555715a60 in GCS_MAVLINK::handle_message (this=0x555555b84ea0, 
+    msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4425
+#6  0x00005555555d224e in GCS_MAVLINK_Copter::handle_message (
+    this=0x555555b84ea0, msg=...)
+    at ../../ArduCopter/GCS_MAVLink_Copter.cpp:1250
+#7  0x000055555570f96b in GCS_MAVLINK::raw_packetReceived (
+    this=0x555555b84ea0, framing_status=1 '\001', status=..., msg=...)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1924
+#8  0x000055555570fbcb in GCS_MAVLINK::update_receive (this=0x555555b84ea0, 
+    max_time_us=1000) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1976
+#9  0x0000555555711aaa in GCS::update_receive (
+    this=0x555555ae4030 <copter+40240>)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:2797
+#10 0x00005555555cd930 in Functor<void>::method_wrapper<GCS, &GCS::update_receive> (obj=0x555555ae4030 <copter+40240>)
+    at ../../libraries/AP_HAL/utility/functor.h:88
+#11 0x0000555555684774 in Functor<void>::operator() (
+    this=0x555555aa6980 <Copter::scheduler_tasks+1344>)
+    at ../../libraries/AP_HAL/utility/functor.h:54
+#12 0x00005555556e72dd in AP_Scheduler::run (this=0x555555ada458 <copter+344>, 
+    time_available=2500) at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:270
+#13 0x00005555556e778e in AP_Scheduler::loop (this=0x555555ada458 <copter+344>)
+    at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:399
+#14 0x00005555556ed841 in AP_Vehicle::loop (this=0x555555ada300 <copter>)
+    at ../../libraries/AP_Vehicle/AP_Vehicle.cpp:559
+#15 0x000055555583d4b8 in HAL_SITL::run (this=0x555555af6860 <hal_sitl_inst>, 
+    argc=12, argv=0x7fffffffdb68, callbacks=0x555555ada300 <copter>)
+    at ../../libraries/AP_HAL_SITL/HAL_SITL_Class.cpp:298
+#16 0x00005555555cce9f in main (argc=12, argv=0x7fffffffdb68)
+    at ../../ArduCopter/Copter.cpp:997
+```"
+15,autotest: add discord notification support via webhook,Hard,"
+Adds --discord-webhook option to autotest to notify on completion. Fixes #14438."
+16,Random autotest fixes,Hard,"Tested... in SITL.... 
+
+...
+"
+17,vehicles: use QGroundControl mode names,Hard,"QGroundControl now uses these names directly through MAVLink `AVAILABLE_MODES`. Update them to be nicer for users. Worth noting that these are also the strings fed in to the speech synth.
+
+They are also used in other status messages so those messages will change slightly too.
+
+Tested that the modes appear nicely in QGC now. Also had to add the infra to Rover to get full names.
+
+Partial fix of #31761 . We need this (or something equivalent) for 4.7 to avoid all the names being capitalized in QGC."
+18,Move ::set_home up from vehicles to AP_Vehicle,Hard,"This is not NFC; both Plane and Rover will be unable to set their home unless their origin has also been set.  I don't think this will break people's workflows.  Rover won't emit a text message now.
+
+I don't think we *should* require home to be set before you set origin.... but at least this way we are consistent, and this is the more conservative approach to getting our vehicles having the same behaviour.
+
+```
+Board                    AP_Periph  antennatracker  blimp  bootloader  copter  heli  iofirmware  plane  rover  sub
+CubeOrange-periph-heavy  *                                 *                                                   
+Durandal                            40              -8     *           -8      -8                40     -104   0
+Hitec-Airspeed           *                                 *                                                   
+KakuteH7-bdshot                     40              0      *           -8      -8                40     -104   0
+MatekF405                           40              -8     *           0       -8                40     -128   0
+Pixhawk1-1M-bdshot                  40              -8                 0       -8                32     -128   0
+SITL_x86_64_linux_gnu               0               -128               -56     -56               0      -56    -128
+f103-QiotekPeriph        *                                 *                                                   
+f303-MatekGPS            *                                 *                                                   
+f303-Universal           *                                 *                                                   
+iomcu                                                                                *                         
+revo-mini                           40              0      *           0       -8                40     -128   0
+skyviper-v2450                                                         -8                                      
+speedybeef4                         40              0      *           0       0                 40     -128   0
+```
+"
+19,AP_HAL_ChibiOS: Add Brahma H7 board support,Hard,"This PR adds support for the Brahma H7 flight controller.\n\n- Added hwdef.dat, hwdef-bl.dat, defaults.parm, and README.md\n- Registered new board ID in board_types.txt\n- Verified compilation and DMA allocation\n- Configured UARTs for natural ordering and DShot compatibility"
+20,hwdef: Add board ID and hwdef configurations for KT-FMU-F1,Hard, 
+21,Airspeed: Health check: work per sensor instance,Hard,"Currently the airspeed health check using the EKF innovations only does not check if the EKF is using the sensor its disabling. On master you currently get this:
+
+<img width=""1386"" height=""884"" alt=""image"" src=""https://github.com/user-attachments/assets/a6734817-4434-4ea1-8392-eacdfa92e00e"" />
+
+The health probability of both sensors is changed. This means that both sensors are disabled. 
+
+<img width=""283"" height=""243"" alt=""image"" src=""https://github.com/user-attachments/assets/4fb1f127-e5f7-4748-ad4a-b465f69e05e3"" />
+
+The innovations recover when the sensor is marked not to use because the EKF is no longer using the bad sensor. So it cycles being disabled and re-enabled.
+
+This is the readings of the two sensors, the second sensor is reporting the correct airspeed but is still disabled:
+
+<img width=""1386"" height=""456"" alt=""image"" src=""https://github.com/user-attachments/assets/69c3e34a-9b09-4039-82f0-d5c256cfcdc1"" />
+
+
+With this patch only the bad sensor is disabled:
+
+<img width=""1380"" height=""769"" alt=""image"" src=""https://github.com/user-attachments/assets/b2479faa-8b67-4a7e-b831-d4a565bc9af7"" />
+
+The second sensor remains healthy. 
+
+Note that in the disable/re-enable cycles the health only goes to 0 very briefly. The low health triggers the airspeed to not be used and thus there is no EKF data so it starts recovering.
+
+<img width=""1380"" height=""769"" alt=""image"" src=""https://github.com/user-attachments/assets/7717b8ae-53d2-44eb-94a3-f9747c8e433a"" />
+
+Because the current primary airspeed selection logic only checks health this means that the second sensor is never used (CTUN.AsT 3 is EKF synthetic).
+
+<img width=""1380"" height=""769"" alt=""image"" src=""https://github.com/user-attachments/assets/0b96aea4-17e5-49ce-b0bd-4a2621bf867b"" />
+
+With https://github.com/ArduPilot/ardupilot/pull/31889 the primary will change on based on use and the second sensor will be used. This results in more use of airspeed without falling back to synthetic:
+
+<img width=""1507"" height=""839"" alt=""image"" src=""https://github.com/user-attachments/assets/227de449-6af9-4764-bfa0-999c6a455caa"" />
+
+Note that there is still small section of synthetic where the EKF is rejecting airspeed but the airspeed sensor has not yet been disabled.
+
+
+
+
+
+
+
+ "
+22,Enhance README with images for SDMODEL SDH7 V2,Hard,Added images to the README for SDMODEL SDH7 V2.
+23,AP_RCProtocol: Define an invalid PWM value to prevent overwriting,Hard,"### Motivation: The Dual-Operator Problem
+Modern smart controllers (e.g., HereLink, SIYI, Skydroid) and GCS software (e.g., QGroundControl) possess MAVLink forwarding and joystick capabilities. Ideally, this hardware allows for a ""Dual Operator"" setup where:
+1.  **Drone Operator:** Controls flight via physical sticks (Pilot).
+2.  **Gimbal Operator:** Controls payload/camera via QGC touch interface or a secondary joystick (Co-Pilot).
+
+**Legacy Approach:**
+Historically, achieving this required two separate receiver systems on the drone (one for flight, one for gimbal), which is complex and heavy.
+
+**New Approach with this PR:**
+By allowing `UINT16_MAX` to signify ""no change,"" we can merge inputs from multiple sources over a single radio link. The Gimbal Operator's commands can be forwarded through the Drone Operator's GCS without overwriting the Pilot's flight channels (by setting flight channels to `UINT16_MAX` in the gimbal packet, or vice versa).
+
+### Operational Sequence
+The following diagram illustrates the data flow enabled by this change:
+
+![無効PWM定義 drawio](https://github.com/user-attachments/assets/daefaac5-adec-4690-bbb7-e5056e2d10c0)
+
+
+### Implementation Details
+* Modified `AP_RCProtocol::add_input` (or relevant decoding logic) to check for `UINT16_MAX`.
+* If a channel value is `UINT16_MAX`, the value is not updated, preserving the current state from the other source.
+* This allows `RADIO_RC_CHANNELS` to act as a sparse update mechanism, similar to `RC_CHANNELS_OVERRIDE`, but suitable for primary control links.
+"
+24,TOOLS:  Update install-prereqs-ubuntu.sh for Linux Mint 22.2 Zara support,Hard,Update install-prereqs-ubuntu.sh for Linux Mint 22.2 Zara support.
+25,AP_Scripting: add serial intercept example,Hard,"A little framework using the serial device simulation support to allow a Lua script to watch or modify serial data.
+
+Tested on the bench that I can look at data from a GPS and it still works for the autopilot. Would not necessarily recommend flying that way due to latency."
+26,Add  New Target SpeedyBeeF405V5,Hard,"Product URL: https://www.speedybee.com/speedybee-f405-v5-55a-stack/
+
+Betaflight Config : https://github.com/betaflight/config/blob/master/configs/SPEEDYBEEF405V5/config.h
+"
+27,AP_Proximity: make Copter proximity pre-arm distance configurable,Hard,"This PR makes the Copter proximity pre-arm check distance configurable by replacing the hard-coded 0.6m threshold with a new AP_Proximity parameter (PRX_ARM_DIST).
+
+Default value is 0.6m, preserving existing behaviour for the pre-arm check.
+The parameter is exposed only on Copter/Heli/Tricopter builds.
+
+Tested in SITL:
+```
+param set PRX_ARM_DIST 3.25
+AP: PreArm: Proximity 32 deg, 2.57m (want > 3.25m)
+```"
+28,Provide a method to get a binary log of all serial data,Hard,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+
+I have a serial port, currently configured for a mavlink connection. The autopilot is not accessible when the vehicle is assembled. I want to have an easy way to decode traffic on the port. If it was, I'd use a Saleae logic analyzer, decode as async serial, and then run use pymavlink to decode the stream.
+
+I cant use the mavlink inspector in mission planner because this is an internal connection in the vehicle, and some packets on this mavlink interface are not also repeated on the GCS link.
+
+**Describe the solution you'd like**
+
+Provide an option to enable logging for the serial port, which will log all data to a binary file on the SD card.
+I can then use mavftp to transfer this to my computer and interpret the contents.
+
+**Describe alternatives you've considered**
+
+Turning on LOG_REPLAY does not log serial port traffic.
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+
+"
+29,Low latency linux uart,Hard,This decreases the latency of a roundtrip communication over a fast UART (2MB) from 20ms to about 2ms. The gating factor was the 100Hz UART thread that slowed both read and writes down.
+30,scripting SRV_Channels:get_output_scaled nonzero values when disarmed,Hard,"## Bug report
+
+**Issue details**
+
+When reading SRV_Channels:get_output_scaled it does not update when disarmed. It can produce nonzero values when disarmed.
+
+To get this issue:
+- run the lua script
+- arm, manual or something, see values change for SRV_Channels:get_output_scaled(73)
+- while the value is nonzero, disarm
+- the value will not go to zero or update.
+
+
+**Version**
+master branch as of a few months ago, so no specific version.
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[X] Rover
+[  ] Submarine
+
+at least rover, probably all platforms.
+
+**Hardware type**
+RPi, HAL Linux
+
+Here's my minimal test
+```lua
+
+
+-- =====================
+-- MAIN LOOP
+-- =====================
+function update()
+    local l_sig = SRV_Channels:get_output_scaled(73)
+    local r_sig = SRV_Channels:get_output_scaled(74)
+    if not arming:is_armed() then
+        l_sig = 0
+        r_sig = 0
+    end
+
+    gcs:send_text(6, ""direct measurement: "" .. SRV_Channels:get_output_scaled(73) .. "" with disarm: "" .. l_sig)
+    return update, 1000
+end
+
+return update()
+```
+
+**Logs**
+_Please provide a link to any relevant logs that show the issue_
+"
+31,Drone fails to disarm in BRAKE mode while landed with low throttle (1050us),Hard,"## Bug report
+
+**Issue details**
+According to the [Brake mode documentation](https://ardupilot.org/copter/docs/brake-mode.html), ""If the vehicle is landed in Brake mode it will immediately disarm."" 
+During testing, when the vehicle is on the ground with the throttle held at a low level (above minimum but insufficient for takeoff), switching to Brake mode does not trigger an immediate disarm. Instead, the motors continue to spin at an idle or low speed indefinitely.
+
+Reproduce the steps:
+1. mode acro
+2. arm throttle
+3. rc 3 1050
+4. mode brake
+
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[x] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+
+**Logs**
+
+[log_0_2026-1-8-15-31-14.bin.zip](https://github.com/user-attachments/files/24490502/log_0_2026-1-8-15-31-14.bin.zip)
+"
+32,hwdef: RadiolinkF405 add w25q128 flash,Hard, 
+33,AP_TemperatureSensor: Add additional sensor slots,Hard,"Add parameters to support up to 15 temperature sensor instances
+
+Built code adding `--define AP_TEMPERATURE_SENSOR_MAX_INSTANCES=15` to the configure stage.
+
+Tested in SITL using `SIM_Temperature_SHT3x` by setting:
+- TEMPF_TYPE = 8
+- TEMPF_BUS = 1
+- TEMPF_ADDR = 68 (0x44)
+- TEMPF_SRC = 3
+- TEMPF_SRC_ID = 1
+
+Observed that battery_temp in Mission Planner status tab was being updated."
+34,Move SITL to using hwdef system,Hard,"No compiler output change:
+```
+Board,AP_Periph
+sitl_periph_battery_tag,*
+sitl_periph_battmon,*
+sitl_periph_can_to_serial,*
+sitl_periph_gps,*
+sitl_periph_universal,*
+```
+
+```
+Board,antennatracker,blimp,copter,heli,plane,rover,sub
+SITL_arm_linux_gnueabihf,*,*,*,*,*,*,*
+SITL_x86_64_linux_gnu,*,*,*,*,*,*,*
+sitl,*,*,*,*,*,*,*
+```
+
+Still a bunch of work to do in future PRs - defines to move from SITLBoard into hwdefs, moving `defaults_periph.dat` outside of the ChibiOS directory and use it, ...
+"
+35,No compiler change comments for the attitude controller,Hard,These are the comments for #31849
+36,Change uses of atof to strtof,Hard,"`atof` returns `double`, and in these cases we're assigning into float.
+
+Tested in SITL using the NMEAOutput test.
+
+Some boards are 128 bytes bigger as the `strtof` symbol is being introduced.
+
+Other boards already have strtof and save some bytes:
+```
+Board                    AP_Periph  antennatracker  blimp  bootloader  copter  heli  iofirmware  plane  rover  sub
+CubeOrange-periph-heavy  *                                 *                                                   
+Durandal                            -32             -32    *           -32     -32               -32    -32    -32
+Hitec-Airspeed           *                                 *                                                   
+KakuteH7-bdshot                     -32             -32    *           -32     -32               -32    -32    -32
+MatekF405                           128             128    *           128     128               128    -56    -56
+Pixhawk1-1M-bdshot                  *               *                  *       *                 *      *      *
+SITL_x86_64_linux_gnu               0               0                  0       0                 0      0      0
+f103-QiotekPeriph        *                                 *                                                   
+f303-MatekGPS            *                                 *                                                   
+f303-Universal           *                                 *                                                   
+iomcu                                                                                *                         
+revo-mini                           128             128    *           128     128               128    -56    -56
+skyviper-v2450                                                         *                                       
+speedybeef4                         128             128    *           128     128               128    -56    -56
+```
+"
+37,AP_Mount: have SoloGimbal use update_mnt_target / send_target_to_gimbal,Hard,"I don't think anybody on the planet has one of these working on master.
+
+These *are* tested in SITL, however.
+
+I was as careful converting this as I was with the other backends - using `diff` to make sure of the differences between the backends.
+"
+38,AP_Mount: add and use MountTargetType::LOCATION,Hard,"defers the calculation of the angles until we know we need them
+
+allows for backends to override send_target_location if they know how to send a lat/lng/alt directly to the mount"
+39,Python 3.9 EOL while search for python.exe if sources cloned in WSL2,Hard,"## Bug report
+
+**Issue details**
+
+My initial report was here: https://github.com/ArduPilot/ardupilot_vscode_devenv/issues/42
+
+If ardupilot code was cloned in WSL2, then ""upload firmware to the controller"" task won't work. It generates an error:
+
+```
+WSL2 firmware uploads use the host's Windows Python.exe so it has access to the COM ports.
+
+        Windows python.exe not found
+        Please download Windows Installer 3.9.x (not 3.10) from https://www.python.org/downloads/
+        and make sure to add it to your path during the installation. Once installed, run this
+        command in Powershell or Command Prompt to install some packages:
+        
+        pip.exe install empy==3.3.4 pyserial
+```
+
+1) Python 3.9 is deprecated, and no installers are available on the python.org for it https://www.python.org/downloads/release/python-3925/. So maybe that error message should be removed/updated.
+
+2) pyserial works fine in Python 3.12
+
+
+I have fixed that this way:
+`Tools/ardupilotwaf/chibios.py` on line 102 change `where.exe python.exe` to `which python.exe` and on line 106 change `\Python\Python` to `/Python/Python`.
+
+
+
+**Version**
+4.7.0-dev
+
+**Platform**
+N/A
+
+**Airframe type**
+n/a
+
+**Hardware type**
+n/a
+
+**Logs**
+n/a
+"
+40,add POI lock Aux Function/Switch,Hard,"this allows tracking a target (POI) point using only a TX switch...no GCS required
+
+also adds a log field for mode....(PeterB actually added it as we were discussing) and a comment correction drive-by
+
+autotest included"
+41,AP:DDS: Add Odometry publisher with covariance,Hard,"This adds nav message compliant odometry topic for ardupilot `ap/odometry/filtered` .
+This message get’s pose and twist at latest time horizon (current time) from EKF and populates covariance matrix (only diagonals, variance) at delayed time horizon as ardupilot’s EKF doesn’t propagate covariance to current time! Expecting there won’t be a significant change in covariance propagating to current time horizon, this should work.
+
+Currently the frame used is odom frame as I assume odom frame pinned to map frame for current DDS interface and EKF architecture.
+
+Added getter functions in EKF3 to expose covariance to external interfaces.
+
+Also because we maintain full quaternions state, conversion to euler covariance will be heavy and need to generate jacobian/projection to get euler covariance and hence populated with variance as ‘1’ for RPY orientation and used user parameter `GYRO_P_NSE` for rotation rates covariance. Though I am discussing it with some devs if there’s a better way but suggestions are welcome.
+
+Other FC firmwares maintain rotation error and hence they propagate variances in Euler but different for Ardupilot’s case
+
+
+## For testing:
+I am currently experimenting with some uncertainty aware planners that uses there covariance offboard.
+
+here’s the work of trajectory planner that uses this topic: https://github.com/ArduPilot/ardupilot_ros/pull/41"
+42,DevEBox and WeAct Studio boards support request,Hard,"
+## Feature request
+
+DevEBox  stm32H743 and stm32H750 with 25mhz  crystal frequency
+
+Issues is currently having difficulty building from the latest Ardupilot firmware not completing with memory errors
+apart from which if it does build it could not connect 
+
+WeAct Studio stm32H743  with 25mhz crystal frequency
+
+Id need help for this board as well into the supported List
+nice to add dual imu feature
+
+**Describe alternatives you've considered**
+_A clear and concise description of any alternative solutions or features you've considered._
+
+**Platform**
+[v  ] All
+[  v] AntennaTracker
+[ v ] Copter
+[ v ] Plane
+[ v ] Rover
+[v  ] Submarine
+
+**Additional context**
+
+these are development board nice to have for users who wish to experiments and would be helpful with a sample  hwdef in the list as a guide as a working flight controller 
+"
+43,AEDROXH7 FC - Update,Hard,"We made few little changes on the latest FC rev. This one will be the official release one
+hwdef, readme, pinout picture have been updated"
+44,Sub:  ArduSub: Add LQR-Based State Feedback Control System,Hard,"  Summary
+
+  This PR implements a complete LQR (Linear Quadratic Regulator) state feedback control system for ArduSub, providing an advanced alternative to traditional PID control with significant performance improvements.
+
+  Motivation
+
+  Traditional PID control has limitations in multi-variable coupled systems like underwater vehicles:
+  - Requires extensive manual tuning (4-8 hours per vehicle)
+  - Limited disturbance rejection
+  - No optimality guarantees
+  - Difficulty handling cross-coupled dynamics
+
+  State feedback control addresses these limitations by:
+  - Using full state information (position, velocity, attitude, rates)
+  - Providing mathematically optimal control
+  - Significantly reducing tuning time (~1 hour)
+  - Better disturbance rejection and energy efficiency
+
+  Implementation Overview
+
+  Architecture
+
+  Three-level controller hierarchy with graceful degradation:
+
+  SF_ENABLE = 3: Position Control (12-state)
+      ↓ Falls back to
+  SF_ENABLE = 2: Attitude Control (6-state)
+      ↓ Falls back to
+  SF_ENABLE = 1: Rate Control (3-state)
+      ↓ Falls back to
+  SF_ENABLE = 0: PID Control (default, unchanged)
+
+  Key Features
+
+  - Full backward compatibility: Existing PID control remains default and unchanged
+  - Instant fallback: Users can switch between SF and PID via single parameter
+  - Optimal gains: LQR solver provides mathematically optimal feedback gains
+  - Production ready: Complete with parameter system, documentation, and tools
+
+  Performance Improvements
+
+  Based on theoretical analysis and SITL validation:
+
+  | Metric             | PID Control | State Feedback | Improvement    |
+  |--------------------|-------------|----------------|----------------|
+  | Response Time      | 0.50-1.0s   | 0.25-0.50s     | 40-50% faster  |
+  | Settling Time      | 2-4s        | 1-2s           | 50% faster     |
+  | Overshoot          | 10-20%      | 2-5%           | 60% reduction  |
+  | Steady-State Error | 2-5°        | 0.5-1°         | 60% better     |
+  | Energy Consumption | Baseline    | -10-15%        | 10-15% savings |
+  | Tuning Time        | 4-8 hours   | 1 hour         | 80% reduction  |
+
+  Overall efficiency improvement: ~23%
+
+  Files Added
+
+  Core Controllers (2,706 lines)
+
+  - libraries/AC_AttitudeControl/AC_StateFeedback_Rate.cpp/.h - 3-state rate controller
+  - libraries/AC_AttitudeControl/AC_StateFeedback_Attitude.cpp/.h - 6-state attitude controller
+  - libraries/AC_AttitudeControl/AC_StateFeedback_Position.cpp/.h - 12-state position controller
+  - libraries/AC_AttitudeControl/AC_StateFeedback_Params.cpp/.h - Parameter definitions (114 params)
+
+  Integration Points
+
+  - ArduSub/Sub.cpp/.h - Controller initialization and mode switching
+  - ArduSub/motors.cpp - Position control wrapper function
+  - ArduSub/Parameters.cpp/.h - Parameter registration
+  - libraries/AC_AttitudeControl/AC_AttitudeControl_Sub.cpp/.h - State feedback integration
+
+  Tools
+
+  - Tools/scripts/lqr_position_gain_calculator.py - LQR gain computation tool
+  - Tools/scripts/gains_position.param - Pre-computed optimal gains
+  - Tools/scripts/test_position_control.py - Comprehensive test suite
+
+  Documentation (70+ pages)
+
+  - STATE_FEEDBACK_CONTROL_GUIDE.md - Complete implementation guide
+  - FINAL_EVALUATION_REPORT.md - Performance analysis and evaluation
+  - CONTROL_EFFICIENCY_ANALYSIS.md - Theoretical foundations
+
+  Technical Details
+
+  Control Law
+
+  For position control (12-state):
+  State vector: x = [x, y, z, vx, vy, vz, φ, θ, ψ, p, q, r]ᵀ
+  Control vector: u = [Tz, τ_roll, τ_pitch, τ_yaw]ᵀ
+  Control law: u = -K(x_desired - x_actual)
+
+  Gain matrix K (4×12) computed by solving the Continuous Algebraic Riccati Equation (CARE):
+  A'P + PA - PBR⁻¹B'P + Q = 0
+  K = R⁻¹B'P
+
+  Stability Verification
+
+  All closed-loop eigenvalues verified to have negative real parts:
+  - Fastest mode: λ = -21.1 (τ ≈ 0.05s)
+  - Slowest mode: λ = -0.42 (τ ≈ 2.4s)
+  - ✅ System guaranteed stable
+
+  Parameter System
+
+  Total of 114 parameters organized in nested subgroups:
+  - Master control: SF_ENABLE (0-3)
+  - Rate controller: 18 parameters (SF_R_*)
+  - Attitude controller: 37 parameters (SF_A_*)
+  - Position controller: 59 parameters (SF_P_*)
+
+  Testing
+
+  SITL Validation ✅
+
+  - Clean compilation (no errors/warnings)
+  - All 59 parameters load successfully
+  - No runtime errors or crashes
+  - Graceful mode switching verified
+
+  Next Steps
+
+  - Hardware-in-the-loop (HIL) testing
+  - Pool testing with BlueROV2
+  - Open water trials
+  - Community feedback and refinement
+
+  Usage Example
+
+  # 1. Build ArduSub
+  ./waf configure --board sitl
+  ./waf sub
+
+  # 2. Calculate optimal gains
+  python3 Tools/scripts/lqr_position_gain_calculator.py --output gains_position.param
+
+  # 3. Start SITL and load parameters
+  cd ArduSub
+  ../build/sitl/bin/ardusub --model vectored
+  # In MAVProxy:
+  param load ../Tools/scripts/gains_position.param
+  param set SF_ENABLE 3
+
+  # 4. Test position control
+  python3 ../Tools/scripts/test_position_control.py
+
+  Compatibility
+
+  - ArduSub: Full integration (this PR)
+  - Hardware: All standard flight controllers (Pixhawk, Navigator, etc.)
+  - Computational: +20-30% CPU vs PID (still <5% total on modern hardware)
+  - Memory: +8 KB RAM, +15 KB flash
+  - Backward compatibility: 100% - PID remains default
+
+  Breaking Changes
+
+  None. This is a purely additive feature:
+  - Default behavior unchanged (SF_ENABLE = 0)
+  - No changes to existing PID controllers
+  - No parameter conflicts
+  - Users must explicitly enable state feedback
+
+  References
+
+  1. Fossen, T. I. (2011). Handbook of Marine Craft Hydrodynamics and Motion Control
+  2. Anderson, B. D., & Moore, J. B. (1990). Optimal Control: Linear Quadratic Methods
+  3. ArduPilot Development Guide: https://ardupilot.org/dev/
+
+  Request for Review
+
+  This implementation has been thoroughly validated theoretically and in SITL. We're seeking:
+  1. Code review for ArduPilot coding standards compliance
+  2. Feedback on parameter organization and naming
+  3. Suggestions for additional testing before hardware deployment
+  4. Community input on use cases and priorities
+
+  The state feedback system brings research-grade control performance to the open-source ArduSub platform, significantly improving precision, efficiency, and ease of tuning for inspection, manipulation, and autonomous mission applications.
+
+  ---"
+45,Replace the Attitude Command Model with the improved Real Time S-Curve algorithm,Hard,"This updates the existing Sqrt Controller used for the attitude command model with the new Real Time S-Curve algorithm.
+
+This results in a jerk limited response on both leaving the current attitude and approaching the new set point.
+
+Current problems are all related to lack of strict handling of command model parameters.
+- Heli can send zero acceleration with ff still on.
+- Plane sends a zero dt
+- Copter doesn't necessarily prevent these problems either.
+
+I still have a little work to ensure the acceleration state is recorded correctly and converted to the correct frame before use.
+
+I have separated the comment improvements here #31867"
+46,Step 3: AP_Math: Update shaping to use improved jerk limited algorithm.,Hard,"The current real time S-Curves have two problems that this PR addresses:
+1. There is a small overshoot as it approaches the target position in some combinations of input.
+2. The deceleration it generates is significantly less than the limits specify.
+
+This PR produces the full deceleration specified by the square root controller and maintains the time constant based approach to the position target. This time constant based approach makes this algorithm act as a filter making it suitable for noisy or inputs and means that the algorithm does not oscillate or buzz near the set-point.
+
+Below is a plot showing the original square root controller, the current Real Time S Curve, This Jerk Square Root algorithm and the standard rectangular jerk S Curve (Optimal).
+
+There are two reasons we would choose not to use the Optimal solution:
+1. Computational Complexity.
+2. Lack of any soft approach to set-point.
+
+Both of these make Optimal less appealing to high update rate applications.
+
+<img width=""907"" height=""1022"" alt=""image"" src=""https://github.com/user-attachments/assets/81f10d8b-72c5-4f5e-b9ea-1c55f5295132"" />
+
+Meant to be merged after https://github.com/ArduPilot/ardupilot/pull/31870 and https://github.com/ArduPilot/ardupilot/pull/31848
+"
+47,TradHeli: move default parameter setting out of Parameters.cpp,Hard,This PR moves some of the helicopter specific default parameter setting logic out of Parameters.cpp and into various locations that make a little more sense (i.e. position control defaults to AC_PosControl.cpp). This allows for cleaner code and makes it easier to find these parameters in the future.
+48,AP_HAL_ChibiOS: add scientechH7v1 board definition,Hard,"Board: Scientech H743-STRING (scientechH7v1)
+
+MCU: STM32H743xx
+
+Sensors: (IMU(s), baro, OSD, SD)
+
+Serial mapping:
+
+SERIAL1 (UART7): GPS
+
+SERIAL2 (USART1): ESC telemetry
+
+SERIAL3 (USART2): SBUS/RC input 
+
+SERIAL4 (USART3): None
+
+SERIAL5 (UART8): ELRS/CRSF
+
+SERIAL6 (UART4): VTX
+
+SERIAL7 (USART6): None
+
+Storage: SDMMC1 enabled (FATFS)
+
+OSD: AT7456E / MAX7456 on SPI2 enabled
+
+Build tested: ./waf configure --board scientechH7v1 && ./waf copter && ./waf plane && ./waf rover
+
+Flashing: (USB/DFU/bootloader/STLink)"
+49,sim_vehicle.py: stack -A options in an array rather than splitting on…,Hard,"… space
+
+e.g. ./Tools/autotest/sim_vehicle.py -v Copter --gdb --debug --map --console -A --serial5=sim:gps:3 -A --serial6=sim:gps:4
+
+Tested in SITL.
+
+Stacking works, as does splitting with spaces... i.e. these both work:
+```
+./Tools/autotest/sim_vehicle.py -v Copter --gdb --debug -A -""-serial5=uart:/tmp/x --serial6=uart:/tmp/y""
+```
+
+and
+```
+./Tools/autotest/sim_vehicle.py -v Copter --gdb --debug -A --serial5=uart:/tmp/x -A --serial6=uart:/tmp/y
+```
+"
+50,AP_AHRS: remove groundspeed method from AHRS backend,Hard,"if we want backends to be able to return this number as determined by a separate calculation (wheel odometry?) we can put it in the results object.  For now, just derive it from the groundspeed vector"
+51,hwdef: Reserve board ID range for Menthosa Solutions.,Hard,"1. Reserve range IDs 7130-7139 for Menthosa Solutions
+2. Add ID 7130 for product model: idronam_pi6x"
+52,AC_Avoidance: Use closest fence point if Dijkstra starts outside fence,Hard,"Resolves #31399
+
+### Bug Description
+If a Rover (or Copter) using OADijkstra starts slightly outside an inclusion fence (e.g., due to GPS drift or loitering near the edge), `calc_shortest_path` fails.
+* `update_visgraph` returns `true` but generates 0 nodes because all paths to internal nodes intersect the fence.
+* The pathfinder returns `DIJKSTRA_ERROR_OUT_OF_MEMORY` (or general failure) and the vehicle cannot RTL or navigate back.
+
+### The Fix
+This PR implements a ""Recovery Mode"" inside `calc_shortest_path`:
+1. Checks if `_source_visgraph` is empty after the initial update.
+2. If empty, iterates through `_inclusion_polygon_pts` to find the geometrically closest point on the fence boundary.
+3. Temporarily sets the path start node to this ""Safe Boundary Point.""
+4. Re-runs `update_visgraph` from this safe spot (which guarantees valid connections).
+5. Prepends the ""Void -> Fence"" leg to the final path so the vehicle drives to the fence first.
+
+### Verification
+* Compiled successfully for Rover.
+* Logic relies on `Vector2f::closest_point` for robust geometry handling."
+53,"AC_PID: add units to I and D terms, fix typo",Hard,"This PR adds `@Units` annotations to the Integral (I) and Derivative (D) terms across the `AC_PID` libraries and fixes a minor typo.
+
+**Changes:**
+* Added `@Units: 1/s` to `_ki` (I term).
+* Added `@Units: s` to `_kd` (D term).
+* Fixed a typo in `AC_PID_2D.cpp` (`Hzs` -> `Hz`).
+* Applied to `AC_PID`, `AC_PID_Basic`, `AC_PID_2D`, and `AC_HELI_PID`.
+
+**Reasoning:**
+While the physical units of the P term change depending on the controller instance (e.g., Rate vs Position), the I and D terms are mathematically consistent relative to the P term:
+* **I term:** Always acts over time, effectively `1/s`.
+* **D term:** Always acts on the rate of change, effectively `s`.
+
+P and FF terms remain unitless in this PR as they are strictly context-dependent.
+
+Ref: #31729"
+54,autotest: correctly set home and startup locations so that the SITL command line can be customized without breaking assertion checks.,Hard,Without this you can't change the home location without tripping over the home location check in reboot_sitl()
+55,AC_PosControl: correct @Increment for NE_VEL_IMAX and JERK params,Hard,"This PR addresses issue #31728 regarding parameter metadata display precision.
+
+The parameter `PSC_NE_VEL_IMAX` (Horizontal Velocity Integrator Max) currently has an `@Increment` of `1`. This granularity is too coarse for precise tuning, as it forces users to jump between integer values (e.g., 2.0 to 3.0 m/s/s), representing a massive step in control authority.
+
+**Changes:**
+* Changed `@Increment` from `1` to `0.1` for `PSC_NE_VEL_IMAX`.
+* Changed `@Increment` from `1` to `0.1` for `PSC_JERK_NE` and `PSC_JERK_D`.
+
+**Reasoning:**
+* **Consistency:** The vertical velocity limit `PSC_D_VEL_IMAX` already uses 0.1 precision. Horizontal should match.
+* **Jerk Tuning:** An increment of `1` for Jerk (m/s/s/s) is too coarse. A jump from 1 to 2 is a 100% increase in harshness. Users need decimal precision (e.g., 1.5) to tune smooth starts/stops.
+
+**Verification:**
+* Verified via code inspection that the metadata tag now aligns with the vertical controller's precision."
+56,Fix buffer overflow in ESP32 WiFi drivers and XPlane SITL connector,Hard,"This PR fixes buffer overflow vulnerabilities caused by unsafe strcpy usage in ArduPilot.
+
+Changes:
+
+Replaced strcpy with bounded copies (strlcpy) in ESP32 WiFi drivers (WiFiDriver.cpp, WiFiUdpDriver.cpp)
+Replaced strcpy with bounded copies in XPlane SITL connector (SIM_XPlane.cpp)
+Ensured proper null-termination to avoid memory corruption
+Verification:
+
+Reproduced overflow using AddressSanitizer in a minimal test case
+Verified safe truncation after applying strlcpy (no ASan errors)
+
+
+Fixes #31794"
+57,Ap math guard sqrt controller dt,Hard,"This change adds a minimum dt threshold in sqrt_controller() to prevent
+numerical instability when dt is positive but extremely small.
+
+The existing is_positive(dt) check allows near-zero dt values, which can
+produce excessively large clamp bounds due to division by dt.
+
+This is a small, self-contained safety fix with no API or behavior changes
+for normal dt values.
+"
+58,TemperatureSensor: Add Rangefinder to TEMPx_SRC sensor source options,Hard,"This PR adds 'Rangefinder' as a valid option to the TEMPx_SRC parameter, allowing an external temperature sensor to override the rangefinder's temperature reading (e.g., for the WATER_DEPTH MAVLink message).
+
+- Adds Rangefinder=9 to AP_TemperatureSensor_Params::Source
+- Updates parameter documentation to include 9:Rangefinder
+- Implements get_temp_with_override() in RangeFinder
+- Uses override in Rover's WATER_DEPTH message
+- Enables AP_TemperatureSensor for Rover
+
+This allows users to select an external temperature sensor for water temperature reporting, improving flexibility and accuracy.
+
+Fixes #31748"
+59,AP_DDS: Add trajectory setpoint interface,Hard,"Adds DDS trajectory setpoint interface (`/ap/cmd_loc_pose`) supporting position, velocity, acceleration, yaw, and yaw_rate commands in map/odom (ENU) and base_link (FLU) frames.
+
+This will allow to interface with external trajectory planners, GCopter, model-predictive controllers (MPC), differential flatness-based controllers, etc, that sends full kinematic trajectory commands with feedforward terms for smooth tracking.
+
+To test:
+
+1. full trajectory command in map frame (ENU):
+```bash
+ros2 topic pub --once /ap/cmd_loc_pose ardupilot_msgs/msg/LocalPosition ""header: {frame_id: 'map'}, type_mask: 256, x: 10.0, y: 5.0, z: 15.0, velocity: {linear: {x: 0.5, y: 0.1, z: 0.2}}, acceleration_or_force: {linear: {x: 0.0, y: 0.0, z: 0.0}}, yaw: 0.0, yaw_rate: 0.0""
+```
+
+2. velocity + yaw command in base_link frame:
+```bash
+ros2 topic pub -r 5 /ap/cmd_loc_pose ardupilot_msgs/msg/LocalPosition ""header: {frame_id: 'base_link'}, type_mask: 3015, x: 0.0, y: 0.0, z: 0.0, velocity: {linear: {x: 2.0, y: 0.0, z: 0.0}}, acceleration_or_force: {linear: {x: 0.0, y: 0.0, z: 0.0}}, yaw: 0.1, yaw_rate: 0.0""
+```
+
+There can improvements like automatic type mask handling, onboard time stretching, jerk (for logging) etc, which will eventually be part of overall interface.
+ 
+A follow-up full trajectory planning example for ardupilot_ros is forthcoming."
+60,Copter: fix failsafe disarm logic for ACRO/STABILIZE modes,Hard,"## Description
+
+Fixes unexpected disarm behavior in ACRO/STABILIZE modes during failsafe events when airborne with zero throttle.
+
+## Problem
+
+The `should_disarm_on_failsafe()` function was using OR logic:
+```cpp
+return ap.throttle_zero || ap.land_complete;
+```
+
+This caused the copter to disarm immediately during any failsafe (radio, GCS, battery) if throttle was at minimum, even when flying at altitude.
+
+## solution
+
+changed to AND logic:
+```cpp
+return ap.throttle_zero && ap.land_complete;
+```
+
+now only disarms when both conditions are true - throttle at zero AND vehicle has actually landed.
+
+## testing
+
+tested in SITL - copter at 280m altitude, zero throttle in ACRO mode, triggered RC failsafe. 
+
+Before fix: immediately disarmed and fell
+After fix: switched to RTL mode. copter still crashed because it was already falling hard in ACRO when RTL kicked in, but at least it attempted the failsafe action instead of just giving up.
+
+the point is to give the copter a chance to recover rather than guaranteeing a crash by disarming.
+
+Fixes #31798"
+61,FPE in SITL,Hard,"## Bug report
+
+Getting the following FPE in SITL quite regularly:
+
+<img width=""1573"" height=""1382"" alt=""Image"" src=""https://github.com/user-attachments/assets/5115fd11-2981-471b-a465-760618e1d446"" />
+
+Apologies for the screenshot, can't seem to cut and paste
+
+**Issue details**
+
+Crash in SITL
+
+**Version**
+master
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[X] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+"
+62,Unexpected Disarm in ACRO mode when Throttle at zero during GCS/RC Failsafe while airborne,Hard,"## Bug report
+
+**Issue details**
+
+In ACRO mode, if the vehicle is airborne and the throttle is at the minimum position, triggering an GCS/RC Failsafe causes the copter to immediately disarm in mid-air.
+
+While the ""Disarm on low throttle"" logic is expected on the ground, it should not be triggered when the flight controller detects the vehicle is still in flight (Airborne), especially during a failsafe event where a controlled RTL or Land is expected.
+
+See line 472:
+https://github.com/ArduPilot/ardupilot/blob/cef6eb780255cc398657a97aa4ef13e438296490/ArduCopter/events.cpp#L463-L482
+
+Steps to Reproduce:
+
+1. Take off and switch to ACRO mode.
+2. Lower the throttle stick to the minimum position.
+3. param set FS_THR_VALUE -1 (trigger an RC Failsafe)/param set FS_GCS_TIMEOUT 0 (trigger a GCS Failsafe).
+4. The copter disarms immediately and falls.
+5. Expected Result: The copter should trigger the configured Failsafe action (e.g., RTL or Land) regardless of the throttle position, as long as it is airborne.
+
+**Version**
+Copter 4.4 -> main
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[x] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+sitl
+
+**Logs**
+RC Failsafe:
+[log_0_2025-12-27-12-45-46.zip](https://github.com/user-attachments/files/24352570/log_0_2025-12-27-12-45-46.zip)
+
+GCS Failsafe:
+[log_0_2026-1-7-16-26-53.bin.zip](https://github.com/user-attachments/files/24468172/log_0_2026-1-7-16-26-53.bin.zip)
+"
+63,Fix buffer overflow in ESP32 WiFi drivers and XPlane SITL connector,Hard,"
+This PR fixes buffer overflow vulnerabilities caused by unsafe strcpy usage in ArduPilot.
+
+Changes:
+- Replaced strcpy with bounded copies (strlcpy) in ESP32 WiFi drivers (WiFiDriver.cpp, WiFiUdpDriver.cpp)
+- Replaced strcpy with bounded copies in XPlane SITL connector (SIM_XPlane.cpp)
+- Ensured proper null-termination to avoid memory corruption
+
+Verification:
+- Reproduced overflow using AddressSanitizer in a minimal test case
+- Verified safe truncation after applying strlcpy (no ASan errors)
+
+Issue: Fixes #31794
+
+<img width=""1101"" height=""833"" alt=""Screenshot 2025-12-27 at 5 49 07 AM"" src=""https://github.com/user-attachments/assets/76f92aab-2cc0-4922-8d31-181456d3ffce"" />"
+64,Buffer overflow in ESP32 WiFi drivers and XPlane SITL connector,Hard,"
+## Bug report
+
+I found a buffer overflow vulnerability in ArduPilot:
+
+1. ESP32 WiFi drivers:
+   - In libraries/AP_HAL_ESP32/WiFiDriver.cpp and WiFiUdpDriver.cpp, strcpy is used to copy SSID and password into fixed-size buffers.
+2. SITL XPlane connector:
+   - In libraries/SITL/SIM_XPlane.cpp, strcpy is used to copy dataref names into fixed-size buffers.
+
+Using strings longer than the buffer size can cause stack-buffer-overflow and program crash. 
+I verified this using a minimal test case compiled with AddressSanitizer.
+
+
+**Version**
+Branch: master
+Commit: ed2c34310cd7771bf920ee855a3d22dab72f3f37
+
+**Platform**
+[X] All
+[X] Copter
+[X] Plane
+[X] Rover
+[X] Submarine
+
+
+**Airframe type**
+Not applicable (HAL/SITL issue)
+
+**Hardware type**
+- ESP32 (WiFi drivers)
+- SITL (XPlane connector)
+
+
+**Logs**
+
+https://github.com/user-attachments/assets/880f2e3f-6190-452b-8c0e-fc96087965c8
+"
+65,AP_Scripting: run scripting engine in protected mode to fix panic hardfault,Hard,"Lua calls our registered panic function if a Lua error is raised outside of any protected mode set up by `lua_pcall` and friends. As scripts themselves are run in protected mode, such an error will only originate from our engine code.
+
+The current code handles panics, but does so incorrectly by neglecting to free the error message buffer during a panic exit. As the underlying heap is eventually destroyed and recreated, that static buffer pointer is to a heap that no longer exists. If the new state raises an error it will try to free that pointer, causing heap corruption and sadness.
+
+Fix this issue and avoid similar ones by refactoring to run the main part of the scripting engine in Lua protected mode. This creates exactly one exit path from the scripting engine and avoids the need for fragile panic handling infrastructure that duplicates what is built into Lua. Quoth the Lua manual, ""The panic function, as its name implies, is a mechanism of last resort. Programs should avoid it.""
+
+This is unlikely to be triggerable in flight as the main engine loop does not appear to use the Lua API in a way which can trigger errors. But the possibility can't be fully excluded. It is, however, possible to trigger beforehand using a perfectly wrong heap size that causes a memory error during initialization.
+
+Note that due to the error message buffer being freed properly now, an error message originating from the engine will not cause a pre-arm failure. This could be improved in the future.
+
+Now that we have a better error handler, I've completely removed the faulty Lua panic handler and simplified the Lua abort handler (which is the even more last-er resort if panic does not work).
+
+Tested on CubeOrange with a script `test.lua` consisting of just `print(""hi"")` and `SCR_HEAP_SIZE` of 8000. Previously this would cause a Lua panic message about running out of memory. Then restarting scripting would hard fault or watchdog or memory guard or something nasty. Now it just causes an engine error message and restarting works fine. Also made sure scripts raising errors still works, along with everything running nicely."
+66,[SITL + ardupilot_gazebo] Iris with 3-DOF gimbal: gimbal jumps to an unexpected pose during SITL startup initialization,Hard,"## Bug report
+
+**Issue details**
+**Steps to reproduce**
+
+(1)Start the Gazebo world and model (the gimbal is initially aligned with the vehicle heading in Gazebo):
+gz sim -v4 -r ~/ardupilot/ardupilot_gazebo/worlds/iris_runway.sdf
+(2)Start SITL and load the gimbal parameter file:
+./Tools/autotest/sim_vehicle.py -D -v ArduCopter -f JSON \
+  --add-param-file=$HOME/work/ardupilot/ardupilot_gazebo/config/gazebo-iris-gimbal.parm \
+  --console --map
+
+**Expected behavior**
+
+After starting SITL, the gimbal should not suddenly jump to an extreme pose during initialization. At minimum, it should remain aligned with the vehicle heading, or first stabilize to a predictable neutral/retract pose. If RC Targeting is the default mode, a more reasonable initial RC input is expected.
+
+<img width=""261"" height=""175"" alt=""Image"" src=""https://github.com/user-attachments/assets/4d239d0f-26f0-48b4-af37-4c872d763676"" />
+
+**Actual behavior**
+
+After starting SITL, the gimbal in Gazebo quickly twists to a strange orientation, and the initial pose aligned with the vehicle heading is broken.
+Early RC inputs captured from RC_CHANNELS are:
+chan6_raw=1000
+chan7_raw=1000
+chan8_raw=1800
+Meanwhile, the parameter file configures the calibration range for RC6/7/8 as RCx_MIN=1100, RCx_MAX=1900, so the raw values at startup are below the configured lower bound (at least CH6/7: 1000 < 1100).
+Early gimbal attitude captured from GIMBAL_DEVICE_ATTITUDE_STATUS:
+q = [0.3921, 0.7231, -0.5320, 0.2010] (w, x, y, z)
+The Euler angles converted from this quaternion show a large-angle combination.
+
+<img width=""238"" height=""177"" alt=""Image"" src=""https://github.com/user-attachments/assets/f6d60834-a67b-451a-84e2-288e35f24781"" />
+
+**Version**
+
+ArduPilot: SITL (ArduCopter), started via sim_vehicle.py
+Simulation: Gazebo (gz sim) + ardupilot_gazebo model (iris + gimbal)
+OS: Ubuntu 22.04
+ArduPilot: ArduPilot-4.6.0-beta1-5055-gebe4fc2074
+ardupilot_gazebo commit: git rev-parse HEAD
+Gazebo / gz-sim version: Gazebo Sim, version 8.10.0
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+
+**Hardware type**
+
+**Logs**
+
+"
+67,AP_GPS: Add per-stream EKF location override for GPS_RAW_INT output,Hard,"This change adds a new GPS parameter, _POS_SETFLGS, which allows selecting,
+per MAVLink stream (SRx), whether the GPS_RAW_INT message uses the EKF-estimated
+location or the raw GPS device position.
+
+When enabled for a given stream, latitude, longitude, and altitude in
+GPS_RAW_INT are populated from the EKF solution obtained via AHRS, while the
+GPS device remains unchanged and continues to provide measurements for EKF
+estimation.
+
+This is particularly useful for external devices (e.g. cameras(SiYi A8mini, etc) or gimbals)
+that record GPS_RAW_INT data directly into image EXIF metadata. By using the
+EKF location, recorded positions remain accurate and consistent in environments
+with degraded GNSS or when transitioning seamlessly between outdoor (GNSS) and
+indoor or vision-based navigation.
+
+
+ADDED PARAMETER
+<img width=""820"" height=""568"" alt=""Screenshot from 2025-12-24 23-36-18"" src=""https://github.com/user-attachments/assets/131d7dca-56cd-4497-923c-8394aef9cfa2"" />
+
+SET 0
+<img width=""820"" height=""318"" alt=""Screenshot from 2025-12-24 23-36-02"" src=""https://github.com/user-attachments/assets/510658b2-eb9a-4d8e-a238-8fdfc8be074b"" />
+
+SET 1
+<img width=""820"" height=""318"" alt=""Screenshot from 2025-12-24 23-35-13"" src=""https://github.com/user-attachments/assets/65c591dc-7c58-476e-877d-5859f2679821"" />
+
+ex
+![A8mini-pr drawio](https://github.com/user-attachments/assets/101ede86-75b4-4efa-8a4f-8f135f3122c2)
+
+
+"
+68,XRush4 F4 V3,Hard,"Tested:
+✅ ESC x 4
+✅ Servo x 2
+✅ LED x 1
+✅ Buzzer x 1
+✅ RC CRSF + RC SBUS
+✅ GPS UBLOX
+✅ Internal Baro BMP280/DPS310
+✅ I2C ASPD4525
+✅ COMPASS HMC5843, QMC5883L
+✅ Camera 1 + Camera 2 + Camera Relay
+✅ OSD
+✅ IRC_tramp + 9V Power switch Relay
+✅ Internal 16 MB Flash + Logging
+✅ Bidirectional DShot300 ESC Telemetry via UART2"
+69,Support for Kebni SensAItion as External AHRS (in IMU and INS modes),Hard,"This PR replaces our earlier #31305. 
+
+We have now added support for using the SensAItion sensor in the INS mode, where it replaces EKF3 and performs onboard sensor fusion between its IMU and GPS receiver(s). It can also run in the previous IMU mode, where it acts as an external sensor that feeds data to EKF3.
+
+We attach a Markdown file with suggested user instructions, to be added to the wiki if the PR is accepted:
+[SensAItion_description_for_Ardupilot_wiki.md](https://github.com/user-attachments/files/24311449/SensAItion_description_for_Ardupilot_wiki.md)
+
+Tests performed:
+- Unit tests for the parser pass.
+- SITL tests pass:
+  - IMU test: SensAItion is set to be Primary IMU
+  - INS test: Similar to vectornav, microstrain and inertiallabs
+- Flight tests on a Holybro Quadcopter X650:
+  - IMU mode: SensAItion IMU as Primary IMU and lane switching disabled. Flying was smooth and innovations were small. Tested loitering, light and aggressive maneuvering.
+  - INS mode: SensAItion as ExternalAHRS, ArduPilot EKF disabled. Tested loitering, light and aggressive maneuvering and autonomous following of a waypoint path.
+
+To discuss:
+- The SensAItion sensor reports altitude relative to the WGS84 geoid, but we noticed that `AP_ExternalAHRS::gps_data_message_t.msl_altitude` seems to expect the altitude above Mean Sea Level. We expect that it won't matter, since users will reset the altitude to 0 before takeoff - do you agree?
+
+Best regards,
+
+The Kebni Inertial Sensing R&D Team
+"
+70,AC_Sprayer: add option to disable on failsafe,Hard,"Add SPRAY_OPTIONS bit0 to disable sprayer outputs while in failsafe.
+
+When enabled, the sprayer clamps pump and spinner outputs to MIN while failsafe is active and does not automatically resume spraying after failsafe clears.
+
+Copter: propagate RC and GCS failsafe state to the sprayer.
+
+Relates to #23927 "
+71,ChibiOS: re-instate entry hook support that was lost in the chibios upgrade,Hard,Re-instates ff56b1cf144b8491b10a00be72a78a4d8e3866c2
+72,AP_Bootloader: Add YARI_RTK_GNSS Board ID,Hard, 
+73,AP_BLHeli: create AP_BLHELI_ENABLED + add to build_options.py,Hard,"This is a no-compiler-output change:
+```
+pbarker@threads:~/rc/ardupilot$ ./Tools/scripts/filter_size_compare_branches_csv.py /tmp/some.csv  --hide
+----------------------------  ------
+Board                         copter
+CubeOrange-SimOnHardWare      -8
+CubeOrangePlus-SimOnHardWare  0
+skyviper-v2450                -8
+----------------------------  ------
+pbarker@threads:~/rc/ardupilot$ 
+```
+
+It also passes `test_build_options.py`, 'though there is probably a missing dependency on `HAL_SERIAL_ESC_COMM_ENABLED` (which we can't fix until that define is added to `build_options.py`).  And renamed, because that isn't capturing everything that should be....
+"
+74,Plane: Quadplane: add thrust loss detection,Hard,"This adds thrust loss detection to quadplane. The thresholds are copied from copter. For thrust loss to be detected the following must be true for one second:
+
+- Armed, flying and in throttle unlimited spool state
+- Desired attitude of less than 15 degrees
+- Demanded throttle of more than 90% or on the upper throttle limit and above 25%
+- Vehicle descending
+- Angle error of less than 30 degrees
+
+When thrust boost is detected it will stops the mixer constraining the other motor outputs based on the failed motor. This will only really help if you have more than 4 motors since if you have 4 or less you will have already crashed.
+
+Copter has a flight option to disable this check, we will likely want the same.
+
+Currently this is active all the time, we may want to ignore transitions (especially for tiltrotors) or change the thresholds.
+
+Draft PR for now to get some testing.
+
+Another option would be to expose the `motors->set_thrust_boost` to scripting so the check could be done with a script and tailored to a specific vehicle, or by using ESC telem for example."
+75,ESC to RPM sensor processing,Hard,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+
+* AM32 ESCs sometimes report RPM values that are significantly out of range (50k+ RPM on a motor that spins at 4k RPM). Thist mostly happens during spool up causing heli governor using ESC RPM telemetry to fail to engage)
+* BDShot RPM telemetry (on AM32 ESCs) is jittery ±10RPM jitter at 4k RPM which probably messes with the Ardupilot governor, causing throttle jitter.
+
+**Describe the solution you'd like**
+Adding lowpass filter to RPM library and respecting RPMx_MAX when taking data from ESC telemetry would alleviate these issues. At the cost of slightly decreased governor tracking accuracy
+
+**Describe alternatives you've considered**
+
+* Checking that the governor is engaged prior to takeoff
+* Kickstarting the motor with the interlock to avoid the issue
+* Cycling the interlock to re-engage the governor 
+* Using throttle curve (not feasible due to large voltage range and apparent lack of voltage compensation)
+
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[ X ] Copter (heli)
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+Will add screenshots soon.
+"
+76,Standard Modes Support problems,Hard,"With the new Standard Modes support in ArduCopter on master QGC now shows those modes in it's ui. There are a number of problems from a usability standpoint with this new functionality:
+* The flight mode names are in ALL CAPS. And include things like ADSB_AVOID. From an end user perspective all caps and using underscores in flight mode names is quite jarring in the QGC UI. It's not technically a problem, just not very user friendly from a good user interface standpoint. It's also pretty jarring for existing QGC+ArduPilot users coming from older firmwares where QGC was in control of flight mode names and used Mixed Case everywhere with no underscores.
+* Also the list of flight modes is massively long. I don't know if some of these flight modes returned fall into the category of not-selectable by a user. If so, they should be marked as such in the protocol. Also would be nice if there was use of the ""advanced"" setting in the protocol. Then QGC could filter the list so that it wasn't so formidable at first glance."
+77,Remove dummy method implementation based on vehicle for AC_Fence,Hard,"We suggest that AC_FENCE_ENABLED can be set to 0, 1 or 2, which is against the pattern followed throughout the codebase. In the AP_*_ENABLED world, something should either be ENABLED or DISABLED, nothing in between.
+
+It is difficult to maintain the current pattern for `AC_FENCE` and as suggested by @peterbarker  in #31716, we should just simply avoid vehicle based dummy method implementation and let blimp/tracker have fences."
+78,AP_Scripting:  Support sending arbitrary mavlink messages,Hard,"Fix the ""FIXME"" in lua_bindings.cpp.  Enable support for sending run time defined mavlink messages.
+"
+79,SITL: extend SerialDevice corruption simulation,Hard,"This change extends the SITL SerialDevice corruption simulator to cover more UART/serial failure modes, making it easier to stress-test serial parsers under Valgrind and catch potential buffer overruns.
+
+## What’s added
+- stall: return 0 bytes even though data was available
+- short-read: return only a short prefix of the available bytes
+- burst: corrupt a small consecutive range of bytes
+
+drop/add/flip are kept as-is.
+ 
+## Notes
+- This is guarded behind AP_SIM_SERIALDEVICE_CORRUPTION_ENABLED, so there is no behavior change when corruption is disabled.
+- Intended usage is to enable corruption and run SITL under Valgrind (e.g. sim_vehicle.py -V) to verify there are no memory errors even under heavy serial corruption."
+80,TemperatureSensor: Add Rangefinder to the TEMPx_SRC sensor source options,good first issue,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+Rover (and [hopefully soon Sub](https://github.com/ArduPilot/ardupilot/pull/31622)) make use of a `WATER_DEPTH` MAVLink message, which includes temperature data from a downward-facing rangefinder. Rangefinders don't always include temperature sensors (or they may not be super accurate), so it could be nice to be able to sub that in from a dedicated temperature sensor.
+
+**Describe the solution you'd like**
+Add a `Rangefinder` option to the temperature sensor [source options](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_TemperatureSensor/AP_TemperatureSensor_Params.h#L43), to allow the rangefinder driver temperature data to be overshadowed via the [`TEMPx_SRC`](https://ardupilot.org/sub/docs/parameters.html#temp1-src-sensor-source) parameters.
+
+**Describe alternatives you've considered**
+1. The `WATER_DEPTH` message could automatically fall back to another temperature source if one is provided, but that either reliant on the rangefinder not providing temperature data, or makes it ambiguous as to what is being used
+2. The source could be specified as ""water temperature"" instead of specifically rangefinder, which could make it more broadly useful in future, but also makes it less clear when and where it's likely to be used.
+3. We could add dedicated MAVLink reporting for temperature sensors, and/or specifically for water temperature, which are both potentially good ideas, but then it's potentially unclear what source is being used for the temperature data in the `WATER_DEPTH` message
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[x] Rover
+[x] Submarine
+
+**Additional context**
+#31616 may be a good reference for the temperature sensor library side of things.
+"
+81,Sub: use get_yaw_rad to get heading,Hard,"Eliminates some use of yaw_sensor (a centidegrees unit variable that we want to eliminate from the code.
+
+No way this compiles if we didn't get everything here.
+
+Only tested for compilation (and by autotest).
+"
+82,AP_Mount: consume gimbal device id for DO_SET_ROI_LOCATION/NONE,Hard,Handle param1 (gimbal device id) for DO_SET_ROI_LOCATION and DO_SET_ROI_NONE immediate commands. Previously these commands always targeted the primary gimbal regardless of the device id.
+83,AP_Bootloader: Adding ID for LUXH743NDAA,Hard,Adding board ID for our new LUXH743NDAA flight controller. Configuration will follow shortly after. 
+84,Extend use of EXTERNAL_POSITION_ESTIMATE data,Hard,"The MAV_CMD_EXTERNAL_POSITION_ESTIMATE data is currently used to reset the position inside the EKF and is not used as a measurement. It was developed originally to support infrequent position fixes from a GCS with up to 5 seconds latency. 
+
+High rate position and attitude data with small and consistent  latencies are supported via the VISION_POSITION_ESTIMATE, GLOBAL_VISION_POSITION_ESTIMATE and VICON_POSITION_ESTIMATE messages which the EKF processes using the writeExtNavData interface. This is limited to local coordinates.
+
+Optical navigation technology can provide data in global coordinates, but can also have large variations in processing delay  between images this is not catered for by either of the interfaces listed above.
+
+This pull request extends the EXTERNAL_POSITION_ESTIMATE message handling to enable its use with higher rate messages as an alternative  position measurement source. This means that states other than position, such as vehicle and  wind  velocity will also be corrected. It also means that innovation consistency checks will be performed which increases protection from error spikes.
+
+The EK3_OPTIONS parameter is used to enable and configure the feature. Setting bit 3 enables the feature and MAV_CMD_EXTERNAL_POSITION_ESTIMATE data will be treated as a measurement. This bit is off by default. Setting bit 4 causes the offset between the MAV_CMD_EXTERNAL_POSITION_ESTIMATE to be learned when GPS quality is sufficient to pass the same checks used for EKF alignment. This offset is then applied to the data when required for navigation. This option is useful if the MAV_CMD_EXTERNAL_POSITION_ESTIMATE message is derived from an odometry technique that drifts over time.
+
+A basic autotest has been included.
+
+Additional SITL testing using an offboard Gazebo derived vision nav sim has also been performed.
+
+The following plots show the Copter vehicle type test with GPS turned off halfway through the run.
+
+<img width=""603"" height=""576"" alt=""Screenshot 2025-12-17 at 11 50 56 AM"" src=""https://github.com/user-attachments/assets/108e09ca-fd4e-4925-8c48-3b3b606a692a"" />
+
+The position innovations get noisy when the GPS stops as the EKF starts using the MAV_CMD_EXTERNAL_POSITION_ESTIMATE data.
+
+<img width=""1023"" height=""538"" alt=""Screenshot 2025-12-17 at 11 46 14 AM"" src=""https://github.com/user-attachments/assets/2377d533-ad77-49a2-8942-9e8baab4e1ef"" />
+
+GPS velocity innovations show when GPS data stops.
+
+<img width=""946"" height=""493"" alt=""Screenshot 2025-12-17 at 7 36 05 AM"" src=""https://github.com/user-attachments/assets/efcd51d7-9d65-4ef7-a784-7837c4407ef2"" />
+
+The simulated measurements have significant lag and jitter which are handled by the EKF
+
+<img width=""1036"" height=""544"" alt=""Screenshot 2025-12-17 at 11 58 15 AM"" src=""https://github.com/user-attachments/assets/1162e204-f52b-4597-a27d-7ace9b6c06f7"" />
+
+A SITLr test was performed using a fixed wing model
+
+<img width=""602"" height=""574"" alt=""Screenshot 2025-12-17 at 12 03 04 PM"" src=""https://github.com/user-attachments/assets/cfb133ac-bc1b-4ea1-b644-2224dbc0f8a7"" />
+
+Measurements had high jitter and latency
+
+<img width=""1079"" height=""543"" alt=""Screenshot 2025-12-17 at 12 04 52 PM"" src=""https://github.com/user-attachments/assets/72306256-0c8f-4c63-a790-7b7c36832661"" />
+
+The EKF handles the larger position fix errors in this application - the fallover from GPS to using vision nav is obvious
+
+<img width=""1033"" height=""535"" alt=""Screenshot 2025-12-17 at 12 05 33 PM"" src=""https://github.com/user-attachments/assets/7e919b9c-f07c-4a95-8d5b-c8a619938c2d"" />
+
+
+
+
+
+
+"
+85,Plane: added Q_FW_LND_ANGLE,Hard,this controls the acceptance angle of the track towards the center of the circle for a spiral descent VTOL landing. Reducing this value from the default of 30 may be useful in some vehicles to get a neater landing approach
+86,Add New Target DAKEFPVH743_SLIM,Hard, 
+87,Add Units to PID parameters,Hard,By adding units to PID parameters we can help analysis and understanding of the controllers.
+88,Ensure Parameter metadata @Range and @Increment display correctly in Mission Planner,Hard,Mission planner uses the @Increment value to define the number of zero's displayed. This means that Mission planner may not display the best resolution if the @Increment has been set based on a larger tuning step.
+89,Support MAVLink COMPONENT_METADATA,Hard,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+QGC folks, in particular @DonLakeFlyer have to manually update the build each new AP version for the link to the new parameters.
+
+**Describe the solution you'd like**
+If we respond to COMPONENT_METADATA then we can give QGC the correct URL for the version, and eventually embed the data on the board with enough space.
+
+**Describe alternatives you've considered**
+We could update QGC to calculate the URL itself, but that would be additional complication.
+
+**Platform**
+[X] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+
+Needed for QGC to update to ARMING_SKIPCHK: https://github.com/ArduPilot/ardupilot/pull/31568
+
+Or some other method of putting 4.7 dev metadata into https://github.com/arduPilot/parameterrepository
+"
+90,AP_HAL_ChibiOS: zero out uart errors after gathering ftp info,Hard,This allows new errors to be seen easily. We do the same for thread stats.
+91,.github: Bump the github-actions group with 2 updates,Hard,"Bumps the github-actions group with 2 updates: [actions/cache](https://github.com/actions/cache) and [actions/upload-artifact](https://github.com/actions/upload-artifact).
+
+Updates `actions/cache` from 4 to 5
+<details>
+<summary>Release notes</summary>
+<p><em>Sourced from <a href=""https://github.com/actions/cache/releases"">actions/cache's releases</a>.</em></p>
+<blockquote>
+<h2>v5.0.0</h2>
+<blockquote>
+<p>[!IMPORTANT]
+<strong><code>actions/cache@v5</code> runs on the Node.js 24 runtime and requires a minimum Actions Runner version of <code>2.327.1</code>.</strong></p>
+<p>If you are using self-hosted runners, ensure they are updated before upgrading.</p>
+</blockquote>
+<hr />
+<h2>What's Changed</h2>
+<ul>
+<li>Upgrade to use node24 by <a href=""https://github.com/salmanmkc""><code>@​salmanmkc</code></a> in <a href=""https://redirect.github.com/actions/cache/pull/1630"">actions/cache#1630</a></li>
+<li>Prepare v5.0.0 release by <a href=""https://github.com/salmanmkc""><code>@​salmanmkc</code></a> in <a href=""https://redirect.github.com/actions/cache/pull/1684"">actions/cache#1684</a></li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href=""https://github.com/actions/cache/compare/v4.3.0...v5.0.0"">https://github.com/actions/cache/compare/v4.3.0...v5.0.0</a></p>
+<h2>v4.3.0</h2>
+<h2>What's Changed</h2>
+<ul>
+<li>Add note on runner versions by <a href=""https://github.com/GhadimiR""><code>@​GhadimiR</code></a> in <a href=""https://redirect.github.com/actions/cache/pull/1642"">actions/cache#1642</a></li>
+<li>Prepare <code>v4.3.0</code> release by <a href=""https://github.com/Link""><code>@​Link</code></a>- in <a href=""https://redirect.github.com/actions/cache/pull/1655"">actions/cache#1655</a></li>
+</ul>
+<h2>New Contributors</h2>
+<ul>
+<li><a href=""https://github.com/GhadimiR""><code>@​GhadimiR</code></a> made their first contribution in <a href=""https://redirect.github.com/actions/cache/pull/1642"">actions/cache#1642</a></li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href=""https://github.com/actions/cache/compare/v4...v4.3.0"">https://github.com/actions/cache/compare/v4...v4.3.0</a></p>
+<h2>v4.2.4</h2>
+<h2>What's Changed</h2>
+<ul>
+<li>Update README.md by <a href=""https://github.com/nebuk89""><code>@​nebuk89</code></a> in <a href=""https://redirect.github.com/actions/cache/pull/1620"">actions/cache#1620</a></li>
+<li>Upgrade <code>@actions/cache</code> to <code>4.0.5</code> and move <code>@protobuf-ts/plugin</code> to dev depdencies by <a href=""https://github.com/Link""><code>@​Link</code></a>- in <a href=""https://redirect.github.com/actions/cache/pull/1634"">actions/cache#1634</a></li>
+<li>Prepare release <code>4.2.4</code> by <a href=""https://github.com/Link""><code>@​Link</code></a>- in <a href=""https://redirect.github.com/actions/cache/pull/1636"">actions/cache#1636</a></li>
+</ul>
+<h2>New Contributors</h2>
+<ul>
+<li><a href=""https://github.com/nebuk89""><code>@​nebuk89</code></a> made their first contribution in <a href=""https://redirect.github.com/actions/cache/pull/1620"">actions/cache#1620</a></li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href=""https://github.com/actions/cache/compare/v4...v4.2.4"">https://github.com/actions/cache/compare/v4...v4.2.4</a></p>
+<h2>v4.2.3</h2>
+<h2>What's Changed</h2>
+<ul>
+<li>Update to use <code>@​actions/cache</code> 4.0.3 package &amp; prepare for new release by <a href=""https://github.com/salmanmkc""><code>@​salmanmkc</code></a> in <a href=""https://redirect.github.com/actions/cache/pull/1577"">actions/cache#1577</a> (SAS tokens for cache entries are now masked in debug logs)</li>
+</ul>
+<h2>New Contributors</h2>
+<ul>
+<li><a href=""https://github.com/salmanmkc""><code>@​salmanmkc</code></a> made their first contribution in <a href=""https://redirect.github.com/actions/cache/pull/1577"">actions/cache#1577</a></li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href=""https://github.com/actions/cache/compare/v4.2.2...v4.2.3"">https://github.com/actions/cache/compare/v4.2.2...v4.2.3</a></p>
+<!-- raw HTML omitted -->
+</blockquote>
+<p>... (truncated)</p>
+</details>
+<details>
+<summary>Changelog</summary>
+<p><em>Sourced from <a href=""https://github.com/actions/cache/blob/main/RELEASES.md"">actions/cache's changelog</a>.</em></p>
+<blockquote>
+<h1>Releases</h1>
+<h2>Changelog</h2>
+<h3>5.0.1</h3>
+<ul>
+<li>Update <code>@azure/storage-blob</code> to <code>^12.29.1</code> via <code>@actions/cache@5.0.1</code> <a href=""https://redirect.github.com/actions/cache/pull/1685"">#1685</a></li>
+</ul>
+<h3>5.0.0</h3>
+<blockquote>
+<p>[!IMPORTANT]
+<code>actions/cache@v5</code> runs on the Node.js 24 runtime and requires a minimum Actions Runner version of <code>2.327.1</code>.
+If you are using self-hosted runners, ensure they are updated before upgrading.</p>
+</blockquote>
+<h3>4.3.0</h3>
+<ul>
+<li>Bump <code>@actions/cache</code> to <a href=""https://redirect.github.com/actions/toolkit/pull/2132"">v4.1.0</a></li>
+</ul>
+<h3>4.2.4</h3>
+<ul>
+<li>Bump <code>@actions/cache</code> to v4.0.5</li>
+</ul>
+<h3>4.2.3</h3>
+<ul>
+<li>Bump <code>@actions/cache</code> to v4.0.3 (obfuscates SAS token in debug logs for cache entries)</li>
+</ul>
+<h3>4.2.2</h3>
+<ul>
+<li>Bump <code>@actions/cache</code> to v4.0.2</li>
+</ul>
+<h3>4.2.1</h3>
+<ul>
+<li>Bump <code>@actions/cache</code> to v4.0.1</li>
+</ul>
+<h3>4.2.0</h3>
+<p>TLDR; The cache backend service has been rewritten from the ground up for improved performance and reliability. <a href=""https://github.com/actions/cache"">actions/cache</a> now integrates with the new cache service (v2) APIs.</p>
+<p>The new service will gradually roll out as of <strong>February 1st, 2025</strong>. The legacy service will also be sunset on the same date. Changes in these release are <strong>fully backward compatible</strong>.</p>
+<p><strong>We are deprecating some versions of this action</strong>. We recommend upgrading to version <code>v4</code> or <code>v3</code> as soon as possible before <strong>February 1st, 2025.</strong> (Upgrade instructions below).</p>
+<p>If you are using pinned SHAs, please use the SHAs of versions <code>v4.2.0</code> or <code>v3.4.0</code></p>
+<p>If you do not upgrade, all workflow runs using any of the deprecated <a href=""https://github.com/actions/cache"">actions/cache</a> will fail.</p>
+<p>Upgrading to the recommended versions will not break your workflows.</p>
+<h3>4.1.2</h3>
+<!-- raw HTML omitted -->
+</blockquote>
+<p>... (truncated)</p>
+</details>
+<details>
+<summary>Commits</summary>
+<ul>
+<li><a href=""https://github.com/actions/cache/commit/9255dc7a253b0ccc959486e2bca901246202afeb""><code>9255dc7</code></a> Merge pull request <a href=""https://redirect.github.com/actions/cache/issues/1686"">#1686</a> from actions/cache-v5.0.1-release</li>
+<li><a href=""https://github.com/actions/cache/commit/8ff5423e8b66eacab4e638ee52abbd2cb831366a""><code>8ff5423</code></a> chore: release v5.0.1</li>
+<li><a href=""https://github.com/actions/cache/commit/9233019a152bc768059ac1768b8e4403b5da16c1""><code>9233019</code></a> Merge pull request <a href=""https://redirect.github.com/actions/cache/issues/1685"">#1685</a> from salmanmkc/node24-storage-blob-fix</li>
+<li><a href=""https://github.com/actions/cache/commit/b975f2bb844529e1063ad882c609b224bcd66eb6""><code>b975f2b</code></a> fix: add peer property to package-lock.json for dependencies</li>
+<li><a href=""https://github.com/actions/cache/commit/d0a0e1813491d01d574c95f8d189f62622bbb2ae""><code>d0a0e18</code></a> fix: update license files for <code>@​actions/cache</code>, fast-xml-parser, and strnum</li>
+<li><a href=""https://github.com/actions/cache/commit/74de208dcfcbe85c0e7154e7b17e4105fe2554ff""><code>74de208</code></a> fix: update <code>@​actions/cache</code> to ^5.0.1 for Node.js 24 punycode fix</li>
+<li><a href=""https://github.com/actions/cache/commit/ac7f1152ead02e89c14b5456d14ab17591e74cfb""><code>ac7f115</code></a> peer</li>
+<li><a href=""https://github.com/actions/cache/commit/b0f846b50b6061d7a2ca6f1a2fea61d4a65d1a16""><code>b0f846b</code></a> fix: update <code>@​actions/cache</code> with storage-blob fix for Node.js 24 punycode depr...</li>
+<li><a href=""https://github.com/actions/cache/commit/a7833574556fa59680c1b7cb190c1735db73ebf0""><code>a783357</code></a> Merge pull request <a href=""https://redirect.github.com/actions/cache/issues/1684"">#1684</a> from actions/prepare-cache-v5-release</li>
+<li><a href=""https://github.com/actions/cache/commit/3bb0d78750a39cefce0c2b5a0a9801052b4359ad""><code>3bb0d78</code></a> docs: highlight v5 runner requirement in releases</li>
+<li>Additional commits viewable in <a href=""https://github.com/actions/cache/compare/v4...v5"">compare view</a></li>
+</ul>
+</details>
+<br />
+
+Updates `actions/upload-artifact` from 5 to 6
+<details>
+<summary>Release notes</summary>
+<p><em>Sourced from <a href=""https://github.com/actions/upload-artifact/releases"">actions/upload-artifact's releases</a>.</em></p>
+<blockquote>
+<h2>v6.0.0</h2>
+<h2>v6 - What's new</h2>
+<blockquote>
+<p>[!IMPORTANT]
+actions/upload-artifact@v6 now runs on Node.js 24 (<code>runs.using: node24</code>) and requires a minimum Actions Runner version of 2.327.1. If you are using self-hosted runners, ensure they are updated before upgrading.</p>
+</blockquote>
+<h3>Node.js 24</h3>
+<p>This release updates the runtime to Node.js 24. v5 had preliminary support for Node.js 24, however this action was by default still running on Node.js 20. Now this action by default will run on Node.js 24.</p>
+<h2>What's Changed</h2>
+<ul>
+<li>Upload Artifact Node 24 support by <a href=""https://github.com/salmanmkc""><code>@​salmanmkc</code></a> in <a href=""https://redirect.github.com/actions/upload-artifact/pull/719"">actions/upload-artifact#719</a></li>
+<li>fix: update <code>@​actions/artifact</code> for Node.js 24 punycode deprecation by <a href=""https://github.com/salmanmkc""><code>@​salmanmkc</code></a> in <a href=""https://redirect.github.com/actions/upload-artifact/pull/744"">actions/upload-artifact#744</a></li>
+<li>prepare release v6.0.0 for Node.js 24 support by <a href=""https://github.com/salmanmkc""><code>@​salmanmkc</code></a> in <a href=""https://redirect.github.com/actions/upload-artifact/pull/745"">actions/upload-artifact#745</a></li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href=""https://github.com/actions/upload-artifact/compare/v5.0.0...v6.0.0"">https://github.com/actions/upload-artifact/compare/v5.0.0...v6.0.0</a></p>
+</blockquote>
+</details>
+<details>
+<summary>Commits</summary>
+<ul>
+<li><a href=""https://github.com/actions/upload-artifact/commit/b7c566a772e6b6bfb58ed0dc250532a479d7789f""><code>b7c566a</code></a> Merge pull request <a href=""https://redirect.github.com/actions/upload-artifact/issues/745"">#745</a> from actions/upload-artifact-v6-release</li>
+<li><a href=""https://github.com/actions/upload-artifact/commit/e516bc8500aaf3d07d591fcd4ae6ab5f9c391d5b""><code>e516bc8</code></a> docs: correct description of Node.js 24 support in README</li>
+<li><a href=""https://github.com/actions/upload-artifact/commit/ddc45ed9bca9b38dbd643978d88e3981cdc91415""><code>ddc45ed</code></a> docs: update README to correct action name for Node.js 24 support</li>
+<li><a href=""https://github.com/actions/upload-artifact/commit/615b319bd27bb32c3d64dca6b6ed6974d5fbe653""><code>615b319</code></a> chore: release v6.0.0 for Node.js 24 support</li>
+<li><a href=""https://github.com/actions/upload-artifact/commit/017748b48f8610ca8e6af1222f4a618e84a9c703""><code>017748b</code></a> Merge pull request <a href=""https://redirect.github.com/actions/upload-artifact/issues/744"">#744</a> from actions/fix-storage-blob</li>
+<li><a href=""https://github.com/actions/upload-artifact/commit/38d4c7997f5510fcc41fc4aae2a6b97becdbe7fc""><code>38d4c79</code></a> chore: rebuild dist</li>
+<li><a href=""https://github.com/actions/upload-artifact/commit/7d27270e0cfd253e666c44abac0711308d2d042f""><code>7d27270</code></a> chore: add missing license cache files for <code>@​actions/core</code>, <code>@​actions/io</code>, and mi...</li>
+<li><a href=""https://github.com/actions/upload-artifact/commit/5f643d3c9475505ccaf26d686ffbfb71a8387261""><code>5f643d3</code></a> chore: update license files for <code>@​actions/artifact</code><a href=""https://github.com/5""><code>@​5</code></a>.0.1 dependencies</li>
+<li><a href=""https://github.com/actions/upload-artifact/commit/1df1684032c88614064493e1a0478fcb3583e1d0""><code>1df1684</code></a> chore: update package-lock.json with <code>@​actions/artifact</code><a href=""https://github.com/5""><code>@​5</code></a>.0.1</li>
+<li><a href=""https://github.com/actions/upload-artifact/commit/b5b1a918401ee270935b6b1d857ae66c85f3be6f""><code>b5b1a91</code></a> fix: update <code>@​actions/artifact</code> to ^5.0.0 for Node.js 24 punycode fix</li>
+<li>Additional commits viewable in <a href=""https://github.com/actions/upload-artifact/compare/v5...v6"">compare view</a></li>
+</ul>
+</details>
+<br />
+
+
+Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.
+
+[//]: # (dependabot-automerge-start)
+[//]: # (dependabot-automerge-end)
+
+---
+
+<details>
+<summary>Dependabot commands and options</summary>
+<br />
+
+You can trigger Dependabot actions by commenting on this PR:
+- `@dependabot rebase` will rebase this PR
+- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it
+- `@dependabot merge` will merge this PR after your CI passes on it
+- `@dependabot squash and merge` will squash and merge this PR after your CI passes on it
+- `@dependabot cancel merge` will cancel a previously requested merge and block automerging
+- `@dependabot reopen` will reopen this PR if it is closed
+- `@dependabot close` will close this PR and stop Dependabot recreating it. You can achieve the same result by closing it manually
+- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency
+- `@dependabot ignore <dependency name> major version` will close this group update PR and stop Dependabot creating any more for the specific dependency's major version (unless you unignore this specific dependency's major version or upgrade to it yourself)
+- `@dependabot ignore <dependency name> minor version` will close this group update PR and stop Dependabot creating any more for the specific dependency's minor version (unless you unignore this specific dependency's minor version or upgrade to it yourself)
+- `@dependabot ignore <dependency name>` will close this group update PR and stop Dependabot creating any more for the specific dependency (unless you unignore this specific dependency or upgrade to it yourself)
+- `@dependabot unignore <dependency name>` will remove all of the ignore conditions of the specified dependency
+- `@dependabot unignore <dependency name> <ignore condition>` will remove the ignore condition of the specified dependency and ignore conditions
+
+
+</details>"
+92,Sub: 4.5 forward-port list,Hard,"This is a list of anything in an ArduSub release branch that needs equivalent behaviour implemented in master. Some PRs/commits may be able to be directly forward ported, while others will require additional considerations and discussion for their relevance and implementation with respect to the other ArduPilot firmware variants. If new missing items/commits are identified they will be added.
+
+## Parameter migration / bad configuration detection
+- [x] Automatic transition from old `BRD_PWM_COUNT` GPIO determination functionality, to new `GPIO (-1)` `SERVOx_FUNCTION` values and/or using the `SERVO_GPIO_MASK`
+    - #31685
+    - #31702
+    - Without this the leak sensor may be silently broken, which is a critical warning system in Sub vehicles
+    - It also affects relays, which could benefit from some user warnings if the autopilot can tell they're misconfigured
+- [ ] Automatic transition from `RCIN9 (59)`/`RCIN10 (60)` channel passthrough piggy-backing to new dedicated `Lights1 (181)`/`Lights2 (182)` `SERVOx_FUNCTION` outputs
+    - #31109
+    - This parameter change also broke programmatic control of lights outputs, which has not yet been resolved
+        - The illuminator protocol [is being considered](https://github.com/ArduPilot/ardupilot/issues/28814#issuecomment-3617607624) as a replacement for the old [`DO_SET_SERVO`](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_SERVO) commands (which required knowing the channel number of the output), although it is a fair amount more complex
+- [ ] Automatic transition from old `Disabled (0)` to new `Actuator1 (184)`/`Actuator2 (185)`/`Actuator3 (186)` `SERVOx_FUNCTION` outputs
+    - #31109 
+    - This parameter change also broke programmatic control of actuator outputs, which has not yet been resolved
+        - [`DO_SET_ACTUATOR`](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_ACTUATOR) MAVLink commands [are planned](https://github.com/ArduPilot/ardupilot/issues/28814) as a replacement for the old [`DO_SET_SERVO`](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_SERVO) commands (which required knowing the channel number of the output)
+
+## Release notes
+- [ ] Update master to include [the release notes](https://github.com/ArduPilot/ardupilot/blob/Sub-4.5/ArduSub/ReleaseNotes.txt) from the various 4.5 versions that have been released
+    - Some of these are related to the features that need forward-porting, so it likely doesn't make sense to bring them through until those features are also available in master (and there'll likely be one for 4.5.7 with the leak/relay details)"
+93,Copter SITL Webots-Python: iris.parm incompatible with current pre-arm validation,Hard,"## Bug report
+
+**Issue details**
+
+Please take these findings with a grain of salt.
+
+When using ArduCopter SITL with the Webots `webots-python` model and the provided `iris.parm`, I am seeing inconsistent and sometimes blocking pre-arm behavior on newer commits. The same workflow and Webots world arm and fly reliably when rolling back to the previous commit.
+
+On the newer commit, arming is frequently blocked by pre-arm checks and parameter validation errors, such as:
+
+* `Bad parameter: ATC_RAT_RLL_I must be > 0`
+* `PreArm: Check ACRO_BAL_ROLL/PITCH`
+* `Arm: Accels inconsistent`
+
+Arming behavior is inconsistent between runs. Sometimes the vehicle arms, sometimes it does not, even with the same setup. Once armed, the vehicle flies normally in Webots.
+
+Rolling back to the immediately previous commit resolves all issues without any manual parameter changes, which suggests a regression or a parameter compatibility issue rather than a Webots model problem.
+
+**Version**
+
+ArduCopter V4.7.0-dev
+Issue observed on the latest commit at time of testing.
+Rolling back to the previous commit restores reliable arming behavior.
+
+**Platform**
+
+[  ] All
+[  ] AntennaTracker
+[x] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+
+Quad / X (Webots Iris)
+
+**Hardware type**
+
+SITL using Webots (`webots-python` model)
+
+**Logs**
+
+Console and QGroundControl messages observed on the affected commit include:
+
+* `Bad parameter: ATC_RAT_RLL_I must be > 0`
+* `PreArm: Check ACRO_BAL_ROLL/PITCH`
+* `Arm: Accels inconsistent`
+
+No crashes observed. Once armed, flight behavior appears normal.
+"
+94,Avoid setting AP_FENCE_ENABLED to 2,Hard,"Currently, we suggest that AC_FENCE_ENABLED can be set to 0, 1 or 2, which is against the pattern followed throughout the codebase. In the `AP_*_ENABLED` world, something should either be ENABLED or DISABLED, nothing in between. 
+
+Setting AC_FENCE_ENABLED to 2 just brings only one additional change in behavior compared to setting it to 1, which is - it compiles code with some dummy methods in AC_Fence for tracker/blimp. 
+
+We already have AC_FENCE_DUMMY_METHODS_ENABLED for that and a user wanting to enable/disable dummy methods, should do so by directly setting AC_FENCE_DUMMY_METHODS_ENABLED, NOT by setting AC_FENCE_ENABLED to 2 (and relying on that to set AC_FENCE_DUMMY_METHODS_ENABLED to 1 in turn).
+
+I caught this while working on a Custom Build Server enhancement and this really breaks things there.
+
+
+
+"
+95,Copter: Clarify and tighten preconditions in Flip mode initialization,Hard,"This change clarifies the precondition checks in ModeFlip::init().
+
+The checks are reordered for readability, and both roll and pitch inputs
+are validated at init time. No behavior change is intended."
+96,Use compass helper functions for hwdef-defined compass probes,Hard,"Well, Claude was happy.
+
+```
+● Based on my comprehensive analysis of the generated hwdef.h files, I don't see any problems with your changes. Here's what I found:
+
+  Summary of Changes
+
+  Your modifications correctly convert compass probe definitions from the old add_backend format to new wrapper functions:
+
+  Old format:
+  add_backend(DRIVER_XXX, AP_Compass_XXX::probe(GET_I2C_DEVICE(bus,addr), external, rotation))
+
+  New format:
+  probe_i2c_dev(DRIVER_XXX, AP_Compass_XXX::probe, bus, addr, external, rotation)
+
+  Verification Results
+
+  1. Correct handling of different probe signatures:
+    - Standard compasses (HMC5843, IST8310, RM3100, etc.): Use 5-parameter probe_i2c_dev/probe_spi_dev with external flag
+    - Special compasses (LSM303D, AK8963 direct): Correctly use 4-parameter ""noexternal"" variant
+    - MPU/ICM auxiliary compasses (AK8963 via MPU9250, AK09916 via ICM20948): Use dedicated wrapper functions
+  2. Syntax validation:
+    - All 315 compass probe lines were converted (matched count)
+    - All parentheses are balanced
+    - All lines end with RETURN_IF_NO_SPACE;
+    - No malformed syntax detected
+  3. Wrapper function existence:
+    - Verified all wrapper functions exist in libraries/AP_Compass/AP_Compass.cpp (lines 1613-1656)
+    - Confirmed overloaded versions handle both standard and ""noexternal"" probe signatures
+  4. Sample checks across board types:
+    - Pixhawk variants: ✓
+    - Cube variants: ✓
+    - Peripheral boards: ✓
+    - Various compass types (I2C, SPI, auxiliary): ✓
+
+  The changes appear to be production-ready with no issues detected.
+```
+
+```
+Board                    AP_Periph  blimp  bootloader  copter  heli  iofirmware  plane  rover  sub
+CubeOrange-periph-heavy  16                *
+Durandal                            *      *           *       *                 *      *      *
+Hitec-Airspeed           *                 *
+KakuteH7-bdshot                     *      *           *       *                 *      *      *
+MatekF405                           *      *           *       *                 *      *      *
+Pixhawk1-1M-bdshot                  120                128     128               128    120    128
+SITL_x86_64_linux_gnu               *                  *       *                 *      *      *
+f103-QiotekPeriph        -344              *
+f303-MatekGPS            72                *
+f303-Universal           -8                *
+iomcu                                                                *
+revo-mini                           72     *           72      72                72     72     72
+skyviper-v2450                                         80
+speedybeef4                         *      *           *       *                 *      *      *
+```
+
+A useful test is to use `./Tools/scripts/configure_all.py --copy-hwdef old-hwdefs --stop` on master and similarly on this branch and then `diff -ur` on the two directories to see the difference.
+
+Will be testing on hardware.
+"
+97,Plane: add acceleration based height control option in TECS,Hard,"This adds an acceleration based height controller as an alternative to the current TECS height control system.
+The maths and most of the code was developed by @priseborough - I am just bringing it as a PR and coordinating testing.
+To try this system you need to set TECS_OPTIONS=4 to enable the new controller. 
+Issues:
+ - [ ] stick mixing on pitch axis doesn't work while this new controller is active
+"
+98,board_id for reservation,Hard,"Hello, 
+as per your documentation https://ardupilot.org/dev/docs/porting.html, I want to reserve the board-id for my bachelor's-project.
+
+Greetings
+Marc"
+99,"Copter: Dijkastras may get stuck if ""Allow fast waypoints"" options is enabled and WPNAV_RADIUS > 2 and",Hard,"If users set the OA_OPTIONS bit ""Allow fast waypoints"" and set WPNAV_RADIUS > 2 the vehicle may get stuck as it flies a path provided by Dijkstras (e.g. a path around a fence)
+
+The core problem is that [OA_PathPlanner](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OAPathPlanner.h) is responsible for returning the next two waypoints that the vehicle should fly to but it doesn't know when AC_WPNav has actually completed these waypoints.  [The code here](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OADijkstra.cpp#L224) tries to figure this out using the vehicle's current location but it assumes the vehicle will come within 2m of the point which it may actually not if ""allow fast waypoints"" is enabled.
+
+The problematic [line is here](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OADijkstra.cpp#L224) and copied below
+
+`const bool near_oa_wp = current_loc.get_distance(destination_new) <= 2.0f;`
+
+Here's an example mission and fence that exhibits the problem.  When the vehicle RTLs at the end
+<img width=""813"" height=""688"" alt=""Image"" src=""https://github.com/user-attachments/assets/22935e39-b5e8-4a8d-968b-dd5edb6bd7db"" />
+
+The proper solution is not as simple as just passing in the WPNAV_RADIUS to Dijkstras though because while this parameter sets an **upper limit** on how far the vehicle may fly from the waypoint, the vehicle normally flies closer than this.  In fact a user could set the WPNAV_RADIUS = 100m and still the vehicle would fly quite close to the waypoints.  In this case if Dijkstras used 100m it would consider intermediate points complete far too early and would likely cut corners which could lead to breaching the fence.
+
+I think the proper solution is to improve the interface between [AP_OAPathPlanner::mission_avoidance()](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OAPathPlanner.cpp#L196) and [AP_OADijkstra::update()](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OADijkstra.cpp#L50) (which is currently passing back and forth [avoidance_info stuctures](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OAPathPlanner.h#L98)) so that Dijkstras provides not just the next two intermediate points but instead the entire path around the obstacle.
+
+Then [AC_WPNav_OA](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_WPNav/AC_WPNav_OA.h) should hold onto this path and take responsibility for feeding the next two points into the [AC_WPNav base class](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_WPNav/AC_WPNav.h).  AC_WPNav_OA can do this better than Dijkstras because it can keep track of where the vehicle is along the path by calling the base classes's [reached_wp_destination()](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_WPNav/AC_WPNav.h#L240C18-L240C40) method
+
+BTW, I've done some work in [this PR to restructure Dijkstras](https://github.com/ArduPilot/ardupilot/pull/28542).  We should consider merging this restructure to master and converting AC_Avoidance to always use meters before trying to resolve this issue."
+100,AP_Scripting: Add set_options and get_options to the Lua SERIAL class,Hard,"This PR adds set_options() and get_options() to the Lua SERIAL class.
+
+set_options() allows Lua scripts to configure advanced UART hardware behavior, such as signal inversion, half-duplex mode, pull-up/down resistors, and DMA usage. get_options() has been added to allow scripts to retrieve the currently applied UART option bitmask.
+
+Documentation has been updated to describe each bit in the option mask and to note that multiple options may be combined using the bitwise OR operator (|).
+
+THIS message tag is ### options 1, or 3は、set to get value.
+<img width=""1850"" height=""1053"" alt=""Screenshot from 2025-12-06 13-18-24"" src=""https://github.com/user-attachments/assets/637f2378-49dd-4973-9f77-4fbb84b8085e"" />
+"

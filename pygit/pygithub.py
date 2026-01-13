@@ -24,7 +24,7 @@ with open('all_issues.csv',mode='w',newline='',encoding='utf-8') as file:
           if is_hard:
             writer.writerow([i,issue.title,"Hard",issue.body or" "])
           i=i+1
-          if i > 10:
+          if i > 100:
            break
 
 print('Data Saved Succesfully')         
