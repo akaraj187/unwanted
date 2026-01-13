@@ -1,0 +1,149 @@
+sl.no,title,label,body
+1,Update for M1 and M2 timers in hwdef.dat,Hard,"Brahma F4:
+Changed the timer for M1 and M2 from TIM3 to TIM1"
+2,Add LoiterSlow flight mode with configurable speed limit,Hard,"- New LOITERSLOW mode (29) for Copter
+- Limits horizontal velocity to configurable LOIT_SLOW_SPD parameter (0.1-2.0 m/s, default 1.0)
+- Inherits from ModeLoiter but enforces speed cap
+- Added to GCS mode lists and MAVLink mappings
+- Includes implementation guide"
+3,ArduSub: added support for WATER_DEPTH MAVLink reporting #31885,Hard,"Fixes #31614
+# Add WATER_DEPTH MAVLink Message Support to ArduSub
+# Summary
+This PR refactors the [send_water_depth()](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html) implementation to make it available for both boats and submarines, rather than being limited to Rover.
+
+#Changes:
+Moved implementation from Rover to GCS_Common:
+
+Relocated [send_water_depth()](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html) from Rover-specific code to the common GCS_MAVLink implementation
+Moved the [last_WATER_DEPTH_index](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html) state variable to the base GCS_MAVLINK class
+Generalized vehicle type check:
+
+Changed from rover.is_boat() to checking MAV_TYPE against both [MAV_TYPE_SURFACE_BOAT](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html) and [MAV_TYPE_SUBMARINE](vscode-file://vscode-app/Applications/Visual%20Studio%20Code.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.html)
+This allows submarines to also report water depth using downward-facing rangefinders
+
+@peterbarker i have created a generic function for both boats and subs and put the code in libraries/GCS_MAVLink/GCS_Common.cpp now, thank you for your help"
+4,AP_GPS: Fix incorrect GPS epoch time around u-blox week rollover,Hard,"`AP_GPS::time_epoch_usec()` can briefly return an incorrect timestamp around UTC midnight on Sundays when using u-blox GPS receivers. At this time aka ""GPS rollover"", the ""itow"" field in all UBX messages resets to 0 and the GPS week increments. The issue is that NAV-PVT, does not include the week number. For F9P and later receivers, NAV-TIMEGPS is the only message that updates state.time_week, and it is usually configured to stream once every 5 epochs. This creates a very real chace where itow has rolled over but the internal week state has not yet been updated, causing time_epoch_usec() to compute an incorrect absolute time.
+
+This PR fixes that ordering issue so the internal GPS time state remains consistent across the rollover boundary, even when NAV-PVT arrives before NAV-TIMEGPS.
+
+I’ve also added a small F9P SITL simulator to make this easy to reproduce. To test this problem I used:
+`TZ=UTC sim_vehicle.py -v ArduCopter -f quad --start-time=2026-01-17-23:59 -D --console --speedup=5
+`, and setting `SIM_GPS1_OPTIONS=1` and waiting a few seconds shows the problem clearly .Without the fix, itow rolls over to 0 while the week stays the same for a few epochs; with the fix applied, the week increments correctly at rollover.
+<img width=""1142"" height=""1120"" alt=""image"" src=""https://github.com/user-attachments/assets/54c697fe-b9ef-4ced-8f63-e0c4ca1f7cd5"" />"
+5,AP_AHRS: Move quaternion into backend results structure,Hard,"... from being a method
+
+Stores the quaternion in the same rotation frame as the DCM and eulers (as opposed to rotating it as part of the fetcher)
+
+`attitude_is_valid` now also comes from the results structure
+
+Relying on CI to test this, but have reviewed the results for the autotest explicitly designed to test autopilot-to-vehicle rotation frames (previous bug fix regression test)
+
+Future PRs will probably remove the rotation matrix as there are very few users of that.
+
+I have branches which require the backends to provide a quaternion, and AP_AHRS_Backend creates derived results from that, too.   Not convinced on that one yet.
+
+DCM has two matrices, one in vehicle, one in autopilot; we choose the right one here when using it to make the quaternion (note it is different to the one used in master's get_quaternion (`_dcm_matrix` vs `_body_dcm_matrix`)
+
+
+"
+6,Remove HAL_CHIBIOS_ARCH_MINDPXV2 ,Hard,"This board already specified baro, compass and IMUs, so it was really just the tweaks around compass probing which were problematic here.
+
+```
+Board                    AP_Periph  antennatracker  blimp  bootloader  copter  heli  iofirmware  plane  rover  sub
+CubeOrange-periph-heavy  *                                 *                                                   
+Durandal                            *               *      *           *       *                 *      *      *
+Hitec-Airspeed           *                                 *                                                   
+KakuteH7-bdshot                     *               *      *           *       *                 *      *      *
+MatekF405                           *               *      *           *       *                 *      *      *
+Pixhawk1-1M-bdshot                  0               -8                 0       0                 0      0      0
+SITL_x86_64_linux_gnu               *               *                  *       *                 *      *      *
+f103-QiotekPeriph        *                                 *                                                   
+f303-MatekGPS            *                                 *                                                   
+f303-Universal           *                                 *                                                   
+iomcu                                                                                *                         
+mindpx-v2                           -688            -696   *           -704    -704              -712   -704   -744
+revo-mini                           *               *      *           *       *                 *      *      *
+skyviper-v2450                                                         *                                       
+speedybeef4                         *               *      *           *       *                 *      *      *
+```
+
+Bytes saved in compass because all_external can be evaluated at compile-time.
+
+<img width=""3230"" height=""675"" alt=""image"" src=""https://github.com/user-attachments/assets/f77e4e06-17e4-409d-9d47-8a1a74fd2fc2"" />
+
+<img width=""3230"" height=""675"" alt=""image"" src=""https://github.com/user-attachments/assets/8e73571b-8bdd-4b98-b584-9439bc37e95e"" />
+"
+7,Backport of Plane system ID feature,Hard,"This PR backports the plane system ID pr #29608 
+
+Still needs verification that was merged correctly
+I would like to get this in 4.6.4 if possible_"
+8,Tools: Add Linux Mint 'zara' support to install-prereqs-ubuntu.sh,Hard,"Add mapping for Linux Mint 22.2 (""zara"") to Ubuntu 24.04 (""noble"") to allow the prerequisites script to run correctly on this distribution.
+
+This fixes an issue where the script would fail to detect the release codename on Linux Mint 22.2."
+9,SRV_Channel: Zero output_scaled values when disarming,Hard,"## Summary
+
+Fix an issue where `SRV_Channels:get_output_scaled()` returns stale non-zero values when the vehicle is disarmed.
+
+## Issue Details
+
+When reading `SRV_Channels:get_output_scaled()` in Lua scripts, the value does not update when disarmed. It can produce non-zero values when disarmed because:
+
+- The `output_scaled` values are stored per-function and only updated by `set_output_scaled()` calls
+- When disarmed, motor control code doesn't always reset these values
+- The existing `zero_rc_outputs()` function only zeroed PWM values, not the `output_scaled` values
+
+## Changes
+
+### SRV_Channels.cpp
+- Add `zero_output_scaled_all()` function to reset all `output_scaled` values to zero
+- Modify `zero_rc_outputs()` to also call `zero_output_scaled_all()`
+
+### SRV_Channel.h
+- Add declaration for `zero_output_scaled_all()`
+
+## Impact
+
+When `zero_rc_outputs()` is called during disarm:
+- All `output_scaled` values are now reset to 0
+- `get_output_scaled()` returns 0 for all functions when disarmed
+- Lua scripts will see correct zero values when vehicle is disarmed
+
+## Platform
+- Affects: Rover (and likely all platforms)"
+10,"GCS_MAVLink, AP_Math: Fix SIGFPE in fence parameter handling",Hard,"## Summary
+
+Fix a security vulnerability that causes SIGFPE (Floating Point Exception) signals when processing crafted fence files with invalid parameter values (out-of-range floats or NaN), leading to immediate autopilot process termination and loss of GCS–vehicle communication.
+
+## Issue Details
+
+A SIGFPE signal is raised in functions:
+- `convert_MISSION_ITEM_INT_to_AC_PolyFenceItem` (MissionItemProtocol_Fence.cpp)
+- `is_positive` (AP_Math.h)
+
+During upload of crafted fence files with invalid `param1` values:
+- `fence-oor.txt` – param1 set to ""-1e+10"" (minus 10 billion)
+- `fence-nan.txt` – param1 set to ""NaN"" (Not-a-Number)
+
+## Changes
+
+### MissionItemProtocol_Fence.cpp
+- Add `isfinite()` check for `param1` before processing
+- Add lower bound validation (`param1 < 0`) for polygon vertex counts
+- Add positive radius validation for circle fence commands
+- Add explicit `static_cast<uint8_t>()` for safe type conversion
+
+### AP_Math.h
+- Make `is_positive()` and `is_negative()` functions NaN-safe
+- Functions now return `false` for NaN/Inf inputs instead of triggering SIGFPE
+
+## Impact
+
+- Invalid fence files are now rejected with `MAV_MISSION_INVALID_PARAM1`
+- No SIGFPE signals triggered by malformed input
+- GCS–vehicle communication remains stable during fence uploads
+
+## Affected Commands
+- MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION (5001)
+- MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION (5002)
+- MAV_CMD_NAV_FENCE_CIRCLE_EXCLUSION (5003)
+- MAV_CMD_NAV_FENCE_CIRCLE_INCLUSION (5004)"
