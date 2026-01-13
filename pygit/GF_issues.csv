@@ -1,0 +1,211 @@
+sl.no,title,label,body
+1,TemperatureSensor: Add Rangefinder to the TEMPx_SRC sensor source options,good first issue,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+Rover (and [hopefully soon Sub](https://github.com/ArduPilot/ardupilot/pull/31622)) make use of a `WATER_DEPTH` MAVLink message, which includes temperature data from a downward-facing rangefinder. Rangefinders don't always include temperature sensors (or they may not be super accurate), so it could be nice to be able to sub that in from a dedicated temperature sensor.
+
+**Describe the solution you'd like**
+Add a `Rangefinder` option to the temperature sensor [source options](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_TemperatureSensor/AP_TemperatureSensor_Params.h#L43), to allow the rangefinder driver temperature data to be overshadowed via the [`TEMPx_SRC`](https://ardupilot.org/sub/docs/parameters.html#temp1-src-sensor-source) parameters.
+
+**Describe alternatives you've considered**
+1. The `WATER_DEPTH` message could automatically fall back to another temperature source if one is provided, but that either reliant on the rangefinder not providing temperature data, or makes it ambiguous as to what is being used
+2. The source could be specified as ""water temperature"" instead of specifically rangefinder, which could make it more broadly useful in future, but also makes it less clear when and where it's likely to be used.
+3. We could add dedicated MAVLink reporting for temperature sensors, and/or specifically for water temperature, which are both potentially good ideas, but then it's potentially unclear what source is being used for the temperature data in the `WATER_DEPTH` message
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[x] Rover
+[x] Submarine
+
+**Additional context**
+#31616 may be a good reference for the temperature sensor library side of things.
+"
+2,Sub: add support for `WATER_DEPTH` MAVLink reporting,good first issue,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+Many underwater vehicles have downward facing sonar sensors that are capable of measuring the distance to the water floor. Currently those are reported via [`DISTANCE_SENSOR`](https://mavlink.io/en/messages/common.html#DISTANCE_SENSOR) and [`RANGEFINDER`](https://mavlink.io/en/messages/ardupilotmega.html#RANGEFINDER) MAVLink messages, but both of those have limited export utility without contextual information that then needs to be cross-referenced with other messages (at risk of being incorrect from timing deltas).
+
+Water temperature is also ambiguously reported in ArduSub via `SCALED_PRESSURE*` messages, which requires a receiver to know which and how many temperature sensors are connected to determine which one(s) refer to the water (e.g. outside the enclosure).
+
+**Describe the solution you'd like**
+Rover [has support for](https://github.com/ArduPilot/ardupilot/pull/28875) a [`WATER_DEPTH`](https://mavlink.io/en/messages/ardupilotmega.html#WATER_DEPTH) message for boats, which seems to include most of the relevant information to be directly usable in map creation / bathymetry situations, and for high level autopilot state reporting. It seems reasonable to expand that support to ArduSub firmware.
+
+**Describe alternatives you've considered**
+Do nothing, which keeps things difficult for control station software, and keeps them reliant on cycling/filtering through `DISTANCE_SENSOR` and `SCALED_PRESSURE` messages for water depth and temperature estimates.
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[X] Submarine
+
+**Additional context**
+_Add any other context or screenshots about the feature request here._
+"
+3,Add support for OPTICAL_FLOW_RAD,good first issue,"## Feature request
+
+ArduPilot consumes OPTICAL_FLOW.  We should also consume OPTICAL_FLOW_RAD, treating all fields in exactly the same way as OPTICAL_FLOW except for the conversion to radians.
+
+**Describe the solution you'd like**
+Code!
+
+**Describe alternatives you've considered**
+Continuing to not have support
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[X ] Copter
+[X] Plane
+[X] Rover
+[X] Submarine
+"
+4,AP_Gripper: support HOLD command option,good first issue,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+Explicit gripper control is currently limited to active releasing and grabbing, which leaves out stopped/neutral operation. The EPM gripper driver seemingly has an option to automatically return to neutral some fixed time after a grab or release, but that is privately scoped and has no direct control action.
+
+**Describe the solution you'd like**
+1. MAVLink [now supports a HOLD command for grippers](https://github.com/mavlink/mavlink/pull/2393), which I think should be used to trigger stopped / neutral functionality of the gripper.
+2. With drivers that expose that functionality, it could also be integrated into AUX functions / joystick button function support, as the return point when a grab or release button stops being held.
+
+**Describe alternatives you've considered**
+We could just not implement this, but it's a missing functionality that seems useful for certain gripper types and applications.
+
+**Platform**
+[x] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+The lack of this functionality is what has thus far stopped ArduSub from regularly using ArduPilot's gripper functionality (opting to instead use momentary servo commands via joystick buttons), so this would reduce ArduSub's reliance on joystick button functions, while also making gripper configuration more intuitive."
+5,"DO_SET_ROI_LOCATION and DO_SET_ROI_NONE ""gimbal device id"" fields should be supported",good first issue,"AP supports the  [DO_SET_ROI_LOCATION](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_ROI_LOCATION) and [DO_SET_ROI_NONE](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_ROI_NONE) as ""immediate"" and mission commands but we do not correctly consume ""param1"" (""Gimbal device ID"").  Instead it is always the first camera gimbal that is controlled.  We should consume this field and control the gimbal device specified
+
+PR https://github.com/ArduPilot/ardupilot/pull/29567 added mission support for these commands"
+6,AP_Mount: mount_open servo output should work for all backends,good first issue,"The SRV_Channel library has a [mount_open](https://github.com/ArduPilot/ardupilot/blob/master/libraries/SRV_Channel/SRV_Channel.h#L58) and mount2_open functions but they are only used by the [Mount_Servo backend](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mount/AP_Mount_Servo.cpp#L112).
+
+We should move the little bit of code that controls to servo into a function in [AP_Mount_Backend](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mount/AP_Mount_Backend.h) and then call it from every backend as part of the update() call.
+
+This issue was raised [here in the Plane forums](https://discuss.ardupilot.org/t/feature-request-add-support-for-retract-mount-in-arduplane/114894)."
+7,EAHRS is performing duplicate temperature compenstation,good first issue,"## Bug report
+
+**Issue details**
+
+Certain devices exposed through EAHRS, like the MicroStrain7, supply data that is already temperature compenstated.
+
+https://s3.amazonaws.com/files.microstrain.com/GQ7+User+Manual/external_content/dcp/Data/sensor_data/data/mip_field_sensor_scaled_mag.htm
+https://s3.amazonaws.com/files.microstrain.com/GQ7+User+Manual/external_content/dcp/Data/sensor_data/data/mip_field_sensor_scaled_accel.htm
+
+When the External AHRS driver posts data to sensor libraries, they perform temperature compenstation on it again, as long as `HAL_INS_TEMPERATURE_CAL_ENABLE` is defined, which is based on board size.  
+
+_Please describe the problem_
+
+This causes double temperature compensation, leading to incorrect values.
+
+**Proposed Solution**
+Add `bool is_temperature_compensated;` to `AP_ExternalARHS::ins_data_message_t`, and then add the necessary hooks in `AP_InertialSensor::handle_external(const AP_ExternalAHRS::ins_data_message_t &pkt)` to stop doing temperature compensation if the supplied value is already temp-compensated.
+
+See `ryanf55:eahrs-precompensated-sensors` for a prototype fix (WIP)
+
+**Version**
+master `1e644d56a51806b63dcd68d5e6566ec0f10248fc`
+
+**Platform**
+[ x] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+"
+8,AP_GPS_GSOF: Support GPS_RAW_DATA for external logging,good first issue,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+
+Right now, there is no way to enable the internal logging on the PX1 GNSS  because the API is only available over the ethernet web UI. Internal logging is used for tech support to analyze system performance. Since PX1 has little flight hours on small fixed wing drones, this is particularly useful to have the ArduPilot community be able to supply logs.
+
+**Describe the solution you'd like**
+
+* Consume [GPS_RAW_DATA](https://ardupilot.org/copter/docs/parameters.html#gps-raw-data-raw-data-logging) in AP_GPS_GSOF
+* Handle disabling logging on disarm, and log continuation on arm
+* Send enable logging/disable logging commands as appropriate
+* Stretch: Handle runtime param updates
+* Update wiki entry for PX1: https://github.com/ArduPilot/ardupilot_wiki/pull/5540/files
+* Create follow up issue for dealing with log data filling up and whether old logs are overwritten, the user is notified that logs are full, or something else
+
+**Describe alternatives you've considered**
+
+Connect laptop temporarily.
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+
+## Further details
+
+The following binary data commands are what need to be sent for logging. There is no TransNumber, so just hard code these in the implementation file. If there is an ACK, parse the ACK.
+```
+Start Logging: 02 00 4C 09 08 44 45 46 41 55 4C 54 00 62 03 
+Stop Logging: 02 00 4C 09 09 44 45 46 41 55 4C 54 00 63 03
+```
+
+## Dependencies
+
+The configuration ack/nack pattern from `gsof-49-50` branch needs to be merged in before there is ability to do configuration responses. This ticket could be done without acks, however it will need to be changed.
+
+"
+9,Set Servo options triggered by failsafe,good first issue,"
+
+## Feature request
+
+
+For UAS which perform a function controlled by Set_servo outputs, such as crop spraying, it would be desirable for the UAS to stop doing the function if a failsafe mode is triggered. It is not clear if the Sprayer functionality includes this but it may be useful for other  applications such as vectored thrust VTOLs etc
+
+Currently the consequence of RC signal loss while spraying would be the UAS performing a RTL while still spraying. This would be VERY BAD as the spray would be released at a high altitude and subsequently drift to unintended locations. 
+
+**Describe the solution you'd like**
+_A clear and concise description of what you want to happen._
+
+A parameter to set servo outputs should failsafe be triggered Eg SERVOXX_FS_VALUE = 1000 
+
+
+**Describe alternatives you've considered**
+_A clear and concise description of any alternative solutions or features you've considered._
+Lua scripting?
+
+checked the Sprayer functionality in ardupilot, it is unclear if this issue is addressed. 
+
+(Also documentation on ""SPRAY_SPINNER Spinner rotation speed: Spinner's rotation speed in PWM (a higher rate will disperse the spray over a wider area horizontally)"" is inaccurate and could cause serious issues, increased RPM actually creates smaller droplets.  see https://en.wikipedia.org/wiki/Rotary_atomizers)
+
+**Platform**
+[ x ] All
+[x  ] AntennaTracker
+[ x ] Copter
+[  x] Plane
+[ x ] Rover
+[  x] Submarine
+
+**Additional context**
+_Add any other context or screenshots about the feature request here._
+"
+10,AP_DDS: Support IMU+gyro+accel data for rate control or offboard fusion,good first issue,"From AP_AHRS, the data is filtered and good for rate control. This is the data after notch+low pass, phase lag and all. This goes on `imu_filtered` topic.
+
+For offboard fusion, we can do it ""badly"". We would need delta angle, delta velocity, all the data products from INS that are not filtered. We have to know the lag to do delayed time fusion with lag on the GPS. This would be on `imu_raw`.
+
+Current EKF does delayed time fusion (in delayed time) with forward propagation to the current time. Doesn't work as well in dynamic flight.  Researchers want to do this. 
+
+Adding things like vision odometry back into ArduPilot (visual mavlink odometry) - this is preferred for performance so ArduPilot's EKF can fuse the data. "
