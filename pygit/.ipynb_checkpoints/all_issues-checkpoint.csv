@@ -1,0 +1,2607 @@
+repo,title,body,labels,is_beginner_friendly
+ArduPilot/ardupilot,TemperatureSensor: Add Rangefinder to the TEMPx_SRC sensor source options,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+Rover (and [hopefully soon Sub](https://github.com/ArduPilot/ardupilot/pull/31622)) make use of a `WATER_DEPTH` MAVLink message, which includes temperature data from a downward-facing rangefinder. Rangefinders don't always include temperature sensors (or they may not be super accurate), so it could be nice to be able to sub that in from a dedicated temperature sensor.
+
+**Describe the solution you'd like**
+Add a `Rangefinder` option to the temperature sensor [source options](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_TemperatureSensor/AP_TemperatureSensor_Params.h#L43), to allow the rangefinder driver temperature data to be overshadowed via the [`TEMPx_SRC`](https://ardupilot.org/sub/docs/parameters.html#temp1-src-sensor-source) parameters.
+
+**Describe alternatives you've considered**
+1. The `WATER_DEPTH` message could automatically fall back to another temperature source if one is provided, but that either reliant on the rangefinder not providing temperature data, or makes it ambiguous as to what is being used
+2. The source could be specified as ""water temperature"" instead of specifically rangefinder, which could make it more broadly useful in future, but also makes it less clear when and where it's likely to be used.
+3. We could add dedicated MAVLink reporting for temperature sensors, and/or specifically for water temperature, which are both potentially good ideas, but then it's potentially unclear what source is being used for the temperature data in the `WATER_DEPTH` message
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[x] Rover
+[x] Submarine
+
+**Additional context**
+#31616 may be a good reference for the temperature sensor library side of things.
+","['Rover', 'Sub', 'good first issue', 'FeatureRequest']",1
+ArduPilot/ardupilot,Sub: add support for `WATER_DEPTH` MAVLink reporting,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+Many underwater vehicles have downward facing sonar sensors that are capable of measuring the distance to the water floor. Currently those are reported via [`DISTANCE_SENSOR`](https://mavlink.io/en/messages/common.html#DISTANCE_SENSOR) and [`RANGEFINDER`](https://mavlink.io/en/messages/ardupilotmega.html#RANGEFINDER) MAVLink messages, but both of those have limited export utility without contextual information that then needs to be cross-referenced with other messages (at risk of being incorrect from timing deltas).
+
+Water temperature is also ambiguously reported in ArduSub via `SCALED_PRESSURE*` messages, which requires a receiver to know which and how many temperature sensors are connected to determine which one(s) refer to the water (e.g. outside the enclosure).
+
+**Describe the solution you'd like**
+Rover [has support for](https://github.com/ArduPilot/ardupilot/pull/28875) a [`WATER_DEPTH`](https://mavlink.io/en/messages/ardupilotmega.html#WATER_DEPTH) message for boats, which seems to include most of the relevant information to be directly usable in map creation / bathymetry situations, and for high level autopilot state reporting. It seems reasonable to expand that support to ArduSub firmware.
+
+**Describe alternatives you've considered**
+Do nothing, which keeps things difficult for control station software, and keeps them reliant on cycling/filtering through `DISTANCE_SENSOR` and `SCALED_PRESSURE` messages for water depth and temperature estimates.
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[X] Submarine
+
+**Additional context**
+_Add any other context or screenshots about the feature request here._
+","['MAVLink', 'Sub', 'good first issue', 'FeatureRequest']",1
+ArduPilot/ardupilot,Add support for OPTICAL_FLOW_RAD,"## Feature request
+
+ArduPilot consumes OPTICAL_FLOW.  We should also consume OPTICAL_FLOW_RAD, treating all fields in exactly the same way as OPTICAL_FLOW except for the conversion to radians.
+
+**Describe the solution you'd like**
+Code!
+
+**Describe alternatives you've considered**
+Continuing to not have support
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[X ] Copter
+[X] Plane
+[X] Rover
+[X] Submarine
+",['good first issue'],1
+ArduPilot/ardupilot,AP_Gripper: support HOLD command option,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+Explicit gripper control is currently limited to active releasing and grabbing, which leaves out stopped/neutral operation. The EPM gripper driver seemingly has an option to automatically return to neutral some fixed time after a grab or release, but that is privately scoped and has no direct control action.
+
+**Describe the solution you'd like**
+1. MAVLink [now supports a HOLD command for grippers](https://github.com/mavlink/mavlink/pull/2393), which I think should be used to trigger stopped / neutral functionality of the gripper.
+2. With drivers that expose that functionality, it could also be integrated into AUX functions / joystick button function support, as the return point when a grab or release button stops being held.
+
+**Describe alternatives you've considered**
+We could just not implement this, but it's a missing functionality that seems useful for certain gripper types and applications.
+
+**Platform**
+[x] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+The lack of this functionality is what has thus far stopped ArduSub from regularly using ArduPilot's gripper functionality (opting to instead use momentary servo commands via joystick buttons), so this would reduce ArduSub's reliance on joystick button functions, while also making gripper configuration more intuitive.",['good first issue'],1
+ArduPilot/ardupilot,"DO_SET_ROI_LOCATION and DO_SET_ROI_NONE ""gimbal device id"" fields should be supported","AP supports the  [DO_SET_ROI_LOCATION](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_ROI_LOCATION) and [DO_SET_ROI_NONE](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_ROI_NONE) as ""immediate"" and mission commands but we do not correctly consume ""param1"" (""Gimbal device ID"").  Instead it is always the first camera gimbal that is controlled.  We should consume this field and control the gimbal device specified
+
+PR https://github.com/ArduPilot/ardupilot/pull/29567 added mission support for these commands",['good first issue'],1
+ArduPilot/ardupilot,AP_Mount: mount_open servo output should work for all backends,"The SRV_Channel library has a [mount_open](https://github.com/ArduPilot/ardupilot/blob/master/libraries/SRV_Channel/SRV_Channel.h#L58) and mount2_open functions but they are only used by the [Mount_Servo backend](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mount/AP_Mount_Servo.cpp#L112).
+
+We should move the little bit of code that controls to servo into a function in [AP_Mount_Backend](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mount/AP_Mount_Backend.h) and then call it from every backend as part of the update() call.
+
+This issue was raised [here in the Plane forums](https://discuss.ardupilot.org/t/feature-request-add-support-for-retract-mount-in-arduplane/114894).","['BUG', 'Enhancement', 'Driver', 'good first issue']",1
+ArduPilot/ardupilot,EAHRS is performing duplicate temperature compenstation,"## Bug report
+
+**Issue details**
+
+Certain devices exposed through EAHRS, like the MicroStrain7, supply data that is already temperature compenstated.
+
+https://s3.amazonaws.com/files.microstrain.com/GQ7+User+Manual/external_content/dcp/Data/sensor_data/data/mip_field_sensor_scaled_mag.htm
+https://s3.amazonaws.com/files.microstrain.com/GQ7+User+Manual/external_content/dcp/Data/sensor_data/data/mip_field_sensor_scaled_accel.htm
+
+When the External AHRS driver posts data to sensor libraries, they perform temperature compenstation on it again, as long as `HAL_INS_TEMPERATURE_CAL_ENABLE` is defined, which is based on board size.  
+
+_Please describe the problem_
+
+This causes double temperature compensation, leading to incorrect values.
+
+**Proposed Solution**
+Add `bool is_temperature_compensated;` to `AP_ExternalARHS::ins_data_message_t`, and then add the necessary hooks in `AP_InertialSensor::handle_external(const AP_ExternalAHRS::ins_data_message_t &pkt)` to stop doing temperature compensation if the supplied value is already temp-compensated.
+
+See `ryanf55:eahrs-precompensated-sensors` for a prototype fix (WIP)
+
+**Version**
+master `1e644d56a51806b63dcd68d5e6566ec0f10248fc`
+
+**Platform**
+[ x] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+","['BUG', 'good first issue', 'ExternalAHRS']",1
+ArduPilot/ardupilot,AP_GPS_GSOF: Support GPS_RAW_DATA for external logging,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+
+Right now, there is no way to enable the internal logging on the PX1 GNSS  because the API is only available over the ethernet web UI. Internal logging is used for tech support to analyze system performance. Since PX1 has little flight hours on small fixed wing drones, this is particularly useful to have the ArduPilot community be able to supply logs.
+
+**Describe the solution you'd like**
+
+* Consume [GPS_RAW_DATA](https://ardupilot.org/copter/docs/parameters.html#gps-raw-data-raw-data-logging) in AP_GPS_GSOF
+* Handle disabling logging on disarm, and log continuation on arm
+* Send enable logging/disable logging commands as appropriate
+* Stretch: Handle runtime param updates
+* Update wiki entry for PX1: https://github.com/ArduPilot/ardupilot_wiki/pull/5540/files
+* Create follow up issue for dealing with log data filling up and whether old logs are overwritten, the user is notified that logs are full, or something else
+
+**Describe alternatives you've considered**
+
+Connect laptop temporarily.
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+
+## Further details
+
+The following binary data commands are what need to be sent for logging. There is no TransNumber, so just hard code these in the implementation file. If there is an ACK, parse the ACK.
+```
+Start Logging: 02 00 4C 09 08 44 45 46 41 55 4C 54 00 62 03 
+Stop Logging: 02 00 4C 09 09 44 45 46 41 55 4C 54 00 63 03
+```
+
+## Dependencies
+
+The configuration ack/nack pattern from `gsof-49-50` branch needs to be merged in before there is ability to do configuration responses. This ticket could be done without acks, however it will need to be changed.
+
+","['Enhancement', 'GPS', 'Driver', 'good first issue']",1
+ArduPilot/ardupilot,Set Servo options triggered by failsafe,"
+
+## Feature request
+
+
+For UAS which perform a function controlled by Set_servo outputs, such as crop spraying, it would be desirable for the UAS to stop doing the function if a failsafe mode is triggered. It is not clear if the Sprayer functionality includes this but it may be useful for other  applications such as vectored thrust VTOLs etc
+
+Currently the consequence of RC signal loss while spraying would be the UAS performing a RTL while still spraying. This would be VERY BAD as the spray would be released at a high altitude and subsequently drift to unintended locations. 
+
+**Describe the solution you'd like**
+_A clear and concise description of what you want to happen._
+
+A parameter to set servo outputs should failsafe be triggered Eg SERVOXX_FS_VALUE = 1000 
+
+
+**Describe alternatives you've considered**
+_A clear and concise description of any alternative solutions or features you've considered._
+Lua scripting?
+
+checked the Sprayer functionality in ardupilot, it is unclear if this issue is addressed. 
+
+(Also documentation on ""SPRAY_SPINNER Spinner rotation speed: Spinner's rotation speed in PWM (a higher rate will disperse the spray over a wider area horizontally)"" is inaccurate and could cause serious issues, increased RPM actually creates smaller droplets.  see https://en.wikipedia.org/wiki/Rotary_atomizers)
+
+**Platform**
+[ x ] All
+[x  ] AntennaTracker
+[ x ] Copter
+[  x] Plane
+[ x ] Rover
+[  x] Submarine
+
+**Additional context**
+_Add any other context or screenshots about the feature request here._
+","['Copter', 'good first issue']",1
+ArduPilot/ardupilot,AP_DDS: Support IMU+gyro+accel data for rate control or offboard fusion,"From AP_AHRS, the data is filtered and good for rate control. This is the data after notch+low pass, phase lag and all. This goes on `imu_filtered` topic.
+
+For offboard fusion, we can do it ""badly"". We would need delta angle, delta velocity, all the data products from INS that are not filtered. We have to know the lag to do delayed time fusion with lag on the GPS. This would be on `imu_raw`.
+
+Current EKF does delayed time fusion (in delayed time) with forward propagation to the current time. Doesn't work as well in dynamic flight.  Researchers want to do this. 
+
+Adding things like vision odometry back into ArduPilot (visual mavlink odometry) - this is preferred for performance so ArduPilot's EKF can fuse the data. ","['EKF', 'ROS', 'good first issue']",1
+ArduPilot/ardupilot,Remove mavlink enum dependencies on non related library,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+In numerous place, we were using mavlink enum. Those are well defined and conveniant but they bring a hard link to mavlink that can be harmfull codewise.
+
+Therefore, we got a recent effort to reduce this dependency : see https://github.com/ArduPilot/ardupilot/pull/23229 . In this PR, we decouple the GPS status from the mavlink enum. That lower our inclusion mess.
+
+**Describe the solution you'd like**
+We should now update our codebase to remove the mavlink GPS enum in favor of the GPS_Status enum.
+
+Some other work could be done to make the same for EKF and other mavlink enums !
+
+**Describe alternatives you've considered**
+_A clear and concise description of any alternative solutions or features you've considered._
+
+**Platform**
+[ X ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+_Add any other context or screenshots about the feature request here._
+","['Enhancement', 'good first issue']",1
+ArduPilot/ardupilot,Custom Build Server Enhancements,"## Feature request
+
+Our Custom Build Server (https://custom.ardupilot.org/) is great, but is lacking a lot of features which would make it very useful.  Given that when adding one feature it is often convenient to add several, this is a compendium issue of features which people have mentioned as being potentially useful.
+
+ - ~~ability to select a branch to build (instead of ""only master"")~~
+    - ~~this will require inspecting the selected branch to work out which option are available to present to the user~~
+    - selecting branches from a white-listed github account name list would be a useful follow-up to this
+ - ability to modify interface based on which vehicle is to be built
+ - ability to build AP_Periph (linked to above point)
+ - ability to upload a hwdef.dat (and perhaps other files) to populate the interface.  We already allow downloading of the hwdef.dat
+ - ability to specify default parameter values to be included in the build
+ - ability to specify some parameters as read-only
+ - ability to enable assertions
+ - ~~better dependency tracking / magic update of interface with deps selected (with warning to user that deps have been selected)~~
+ - ~~download features.txt from (e.g.) https://firmware.ardupilot.org/Plane/latest/mRoX21-777/features.txt to pre-populate interface when it would be otherwise empty~~
+",['good first issue'],1
+ArduPilot/ardupilot,AP_SmartRTL algorithm breaks on Circle mode,"## Bug report
+
+**Issue details**
+
+A flight on the weekend showed a problem where the SmartRTL buffer filled up while the vehicle was in circle mode, and SmartRTL disengaged.
+
+This is trivially reproducible in SITL:
+```
+mode loiter
+arm throttle
+rc 3 2000
+mode circle
+rc 3 1500
+set sim_speedup 100
+```
+
+**Version**
+master
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[ X ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+Chimera
+
+**Hardware type**
+Lumeneer H743
+
+**Logs**
+n/a - reproducible in SITL
+","['Copter', 'good first issue']",1
+ArduPilot/ardupilot,Write autotest for the no-short-failsafe option in auto mode for Plane,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+We had a regression where a user set the ignore-short-failsafe-in-auto option and it didn't have an effect
+
+**Describe the solution you'd like**
+An autotest to ensure the option works
+
+https://discuss.ardupilot.org/t/fs-long-actn-and-fs-short-actn/77900/8
+
+**Describe alternatives you've considered**
+Having the feature break again and we don't know about it
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[ X ] Plane
+[  ] Rover
+[  ] Submarine
+","['Plane', 'good first issue']",1
+ArduPilot/ardupilot,Make more features configurable,"## Cleanup request
+
+Our new build server (https://custom.ardupilot.org) allows users to make their own firmwares by selecting and de-selecting features.
+
+Sometimes the amount of code required to run a feature exceeds the flash space available on boards.
+
+The more things we allow users to remove from the compilation the more likely they are to get a firmware that does everything they want.
+
+A good example of this is scripting - users of 1MB boards would love to have it, but it is a large chunk of code and excluded from the 1MB builds by default.
+
+*note* - each of these libraries can and should be done as a separate Pull Request!
+
+There are many places in the code that we could allow users to exclude chunks of code on a piece-by-piece basis, for example:
+ - rangefinder library
+ - visual odometry backends
+ - AC_Avoid
+
+ - DONE AP_Winch backends
+ - DONE GPS backends (@Hwurzburg is currently looking at these)
+ - DONE rangefinder backends
+ - DONE precision landing library
+ - DONE compass backends
+ - DONE airspeed backends
+ - DONE AP_Mount backends
+ - DONE battery monitor backends
+ - DONE AP_Winch
+ - DONE AP_MSP backends
+ - DONE optical flow library
+ - DONE optical flow backends
+ - DONE RCInput backends (e.g. srxl)
+ - DONE FRSky library
+ - DONE FRSky backends
+
+The larger the amount of code excised the more useful the change is.  `nm` can be used to show the largest symbols in the compiled code:
+```
+pbarker@bluebottle:~/rc/ardupilot(pr/sitl-on-hw)$ arm-none-eabi-nm --demangle --size-sort --print-size build/NucleoH743/bin/ardurover | tail -20
+3000de30 00001200 B NavEKF_core_common::nextP
+080e58ac 00001264 T NavEKF3_core::FuseDragForces()
+3000a484 000013c8 b xsimstate
+080e4454 0000144c T NavEKF3_core::FuseSideslip()
+080880c8 00001540 T SoloGimbalEKF::predictCovariance()
+0810a8cc 0000163c T NavEKF2_core::FuseSideslip()
+300183d0 00001658 b supported_frames
+30011e20 000017e4 b icm40609
+3001be50 000018a0 B SDU1
+08111918 00001e78 t __static_initialization_and_destruction_0(int, int)
+0810d548 00001f5c T NavEKF2_core::FuseOptFlow()
+081330b0 00002014 T AP_Param::param_defaults_data
+080e80fc 000022f8 T NavEKF3_core::FuseOptFlow(NavEKF3_core::of_elements const&, bool)
+080d4e08 00002814 T NavEKF2_core::FuseMagnetometer()
+0805ff8c 000029ee T NavEKF3_core::FuseBodyVel()
+081460a4 00002ddb t ap_romfs_0
+0805597c 00002edc T NavEKF3_core::FuseMagnetometer()
+080df5ac 00004d0c T NavEKF2_core::CovariancePrediction()
+0806626c 00005e70 T NavEKF3_core::CovariancePrediction(Vector3<double>*)
+30002518 00006740 B rover
+pbarker@bluebottle:~/rc/ardupilot(pr/sitl-on-hw)$ 
+```
+
+
+There are also some large wins available by filling out `AP_NavEKF3_features.h` with more options.  This work will be much more complicated, but the ability to, for example, exclude magnetometers from the EKF's calculations would save a very large amount of code. ~~(see https://github.com/ArduPilot/ardupilot/issues/19070 however)~~
+
+The pattern we use is `AP_<foo>_ENABLED`.  An example of this is `AP_QUADPLANE_ENABLED`.  Typically the main library header will contain:
+```
+#ifndef AP_GPS_NOVA_ENABLED
+#define AP_GPS_NOVA_ENABLED 1
+#endif
+```
+
+The new option should also be added to the custom build server configuration: https://github.com/ArduPilot/ardupilot/blob/master/Tools/scripts/build_options.py 
+
+The code *must* be tested for compilation and working-ness with and without the option set.
+
+**Platform**
+[ X ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+",['good first issue'],1
+ArduPilot/ardupilot,Move test_onboard_logging_generation outside autotest.py,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+Move test_onboard_logging_generation outside autotest.py to all to validate logger documentation before running the full autotest suite. Ideally, on CI it should run on build_ci.sh with param_parse.py to allow to validate soon that the documentation is correct and not wait that all test pass to trigger a documentation failure...
+
+**Describe the solution you'd like**
+_A clear and concise description of what you want to happen._
+
+**Describe alternatives you've considered**
+_A clear and concise description of any alternative solutions or features you've considered._
+
+**Platform**
+[ X ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+_Add any other context or screenshots about the feature request here._
+","['AllVehicles', 'BuildSystem', 'good first issue', 'CI']",1
+ArduPilot/ardupilot,Add visualisation for data in build_binaries_history.sqlite,"## Feature request
+
+This file is generated as part of an autotest run.  It contains information about which boards built and which boards did not for a particular tested git sha.
+
+It would be nice to be able to visualise this data on the autotest results page.
+
+Previously when I've done this I've created a table, the left-most column being the most recent tested master commit, the columns sorted by git history.  This allows you to narrow down to a narrow range of commits where a board's build was broken.
+
+However, a quicker patch giving a lot of value would be to extract the data in autotest.py's build_binaries.py and do a `results.add()` for the failing boards.  Only the failures for the master commit (as opposed to the stable/beta tags) would be reported as the story is too difficult to tell otherwise.  Rejigging autotest to run on the different tags (as opposed to running build_binaries on the different tags) is not in scope here :-)
+",['good first issue'],1
+ArduPilot/ardupilot,Modify autotest to notify Discord when run is complete,"## Feature request
+
+We need to cut back on the number of tests we run on CI (so they finish faster, given we can't reasonably increase the resources allocated there).  However, we still want more tests overall.  The autotest results tend to get ignored a lot of the time.
+
+A push notification to Discord (summarising improvements or regressions) may allow us to quickly notice and fix regressions that occur because we're not running all of the tests in the CI environment.
+
+**Describe alternatives you've considered**
+Continue to run more and more tests in CI.  We already take too long and randomly time out, which is no good.
+Run fewer tests, catch fewer regressions.
+Spend time optimising the time taken to run tests.
+
+**Platform**
+[ X ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+",['good first issue'],1
+ArduPilot/ardupilot,Copter: POSITION_TARGET_LOCAL_NED doesn't correctly reflect SET_POSITION_TARGET_LOCAL_NED,"## Bug report
+
+**Issue details**
+
+POSITION_TARGET_LOCAL_NED doesn't correctly reflect SET_POSITION_TARGET_LOCAL_NED. 
+It always returns MAV_FRAME_LOCAL_NED, regardless of what was specified in SET. 
+The type mask is also incorrect - it can only return 3 different masks, when there are many more possible combinations. 
+Finally, yaw and yaw_rate are always zero. 
+
+**Version**
+4.03
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[x] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+","['Enhancement', 'Copter', 'good first issue']",1
+ArduPilot/ardupilot,Copter: implement Circle within Guided (aka LOITER_TURNS),"This enhancement request comes from this discussion: https://discuss.ardupilot.org/t/copter-not-supporting-mav-cmd-nav-loiter-turns-question/51785
+
+The request is to implement Circle mode (aka LOITER_TURNS) from within Guided mode.
+
+Support for LOITER_TURNS is already implemented in Auto mode so this should be possible.","['Enhancement', 'Copter', 'good first issue']",1
+ArduPilot/ardupilot,Make error more explicit on install script,"### Feature request
+
+**Is your feature request related to a problem? Please describe.**
+We got some report of use that have failure to use SITL after using the install script.
+I am pretty confident that they are just typing the command from the wiki and don't read output and miss the failure
+
+**Describe the solution you'd like**
+I propose that we make the error on the install script very visual with a big banner and if possible color !
+","['Enhancement', 'good first issue']",1
+ArduPilot/ardupilot,AP_Notify: Create automatic audible lost/crashed vehicle alarm,"### Feature request
+
+**Is your feature request related to a problem? Please describe.**
+When a vehicle crashes or is otherwise lost, it can be difficult to find it if you cannot see it.  If you do not have and RC connection, you cannot activate the lost vehicle alarm.  The lost vehicle alarm can only be activated by stick gesture or aux switch.  If you do not have a GCS connection and GPS, you cannot see its coordinates.
+
+**Describe the solution you'd like**
+- Lost vehicle alarm sound activate and stay activated when the RC and GCS are lost
+- Lost vehicle alarm sound activate and stay activated on crash detection
+- Change the lost vehicle alarm sound to something more unique, such as the sound of an ELT
+- Change RGB lights to flash as bright white as possible and remain flashing after crash detection
+
+**Describe alternatives you've considered**
+Pop smoke and launch flares. But probably not practical at this time :)
+
+**Platform**
+[X] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+","['Safety', 'Library', 'AllVehicles', 'good first issue']",1
+ArduPilot/ardupilot,Plane: BUG with auto_state.checked_for_autoland,"### Bug report
+Switch AUTO->RTL again an again,  because checked_for_autoland always set to false when change mode
+
+```
+bool Mode::enter()
+{
+    // cancel inverted flight
+    plane.auto_state.inverted_flight = false;
+
+    // don't cross-track when starting a mission
+    plane.auto_state.next_wp_crosstrack = false;
+
+    // reset landing check
+    plane.auto_state.checked_for_autoland = false;
+
+```
+
+**Version**
+4.0
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[*] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+_What type of airframe (flying wing, glider, hex, Y6, octa etc)_
+
+**Hardware type**
+_What autopilot hardware was used? (Pixhawk, Cube, Pixracer, Navio2, etc)_
+
+**Logs**
+_Please provide a link to any relevant logs that show the issue_
+","['Plane', 'good first issue']",1
+ArduPilot/ardupilot,"Copter: pre-arm check ""Terrain data missing"" when attempting to arm without GPS lock",,['good first issue'],1
+ArduPilot/ardupilot,"ADSB: _OFFSET_LAT, OFFSET_LON should be renamed to POS_X/Y/Z","ADSB appears to use non-standard position offset parameter names, ADSB_OFFSET_LAT/LON which I think should be renamed to be ADSB_POS_X/Y/Z to be consistent with other sensors ([wiki](http://ardupilot.org/copter/docs/common-sensor-offset-compensation.html))
+
+Maybe I'm misunderstanding but I don't see how a ""LAT"", ""LON"" parameter can be a good name for something that is in body frame.
+
+Because users look at parameters directly a lot, I think we need to be careful about how we name things.",['good first issue'],1
+ArduPilot/ardupilot,nmea output code should use fixed buffer and fix snprintf issues,"The AP_NMEA_Output code should allocate buffers once for max size of strings, and also needs to fix the use of snprintf for the lng_string to ensure it doesn't end up with an unterminated string in %s for next printf","['BUG', 'Library', 'good first issue']",1
+ArduPilot/ardupilot,AC_Avoidance: Dijkstra's VisGraph should hold distances in meters,Dijkstra's [VisGraph class should hold distances in meters](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OADijkstra.h#L85).  It currently holds the distances in cm perhaps because this saves a small amount in computation but even so we should change this to be meters.,"['Copter', 'Rover', 'good first issue']",1
+ArduPilot/ardupilot,Rover: boats entering SmartRTL should loiter during path cleanup and during failure,"There are two places in mode_smart_rtl.cpp where stop_vehicle() is called ([see here](https://github.com/ArduPilot/ardupilot/blob/master/APMrover2/mode_smart_rtl.cpp#L40)).  
+
+This is fine for Rovers but for boats they should ideally Loiter (i.e. hold position) if they can during the SmartRTL_WaitForPathCleanup and SmartRTL_Failure stages.
+
+[Guided mode's behaviour when _guided_mode == Guided_WP](https://github.com/ArduPilot/ardupilot/blob/master/APMrover2/mode_guided.cpp#L35) can be used as a reference on how this can be done.","['Enhancement', 'Rover', 'good first issue']",1
+ArduPilot/ardupilot,Rover: Guided mode's wp_bearing is incorrect for some sub modes,"While working on this PR: https://github.com/ArduPilot/ardupilot/pull/11283 I found that Guided mode's wp_bearing valueis incorrect for some submodes.
+
+Guided uses the [mode.cpp's wp_bearing method](https://github.com/ArduPilot/ardupilot/blob/master/APMrover2/mode.cpp#L163) which calls the navigation library. This works when _guided_mode == Guided_WP but is incorrect when it's Guided_HeadingAndSpeed, Guided_TurnRateAndSpeed and Guided_Loiter.
+
+We should override the wp_bearing for Guided mode and then handle these other sub modes.  For example, for Guided_HeadingAndSpeed we should use the target heading.  For Guided_TurnRateAndSpeed we should return 0.0f.  For Guided_Loiter we should call ModeLoiter's wp_bearing.","['BUG', 'Rover', 'good first issue']",1
+ArduPilot/ardupilot,SITL: add correct battery estimator from vehicle type,"### Feature request
+
+**Is your feature request related to a problem? Please describe.**
+Following https://github.com/ArduPilot/ardupilot/pull/9900, we should create a correct way to implement battery consumption on SITL : 
+Maybe with a battery object in SITL and with model of consumption on each vehicle backend.
+
+**Platform**
+[ X] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+","['Enhancement', 'SITL', 'good first issue']",1
+ArduPilot/ardupilot,RangeFinder: Using existing  Analog offset for other interfaces (I2C or Serial),"### Feature request
+Expand rangefinder offset 
+
+**Is your feature request related to a problem? Please describe.**
+Need some easy fix to adjust sensor offset.
+For example, the Garmin Lidar Lite, has an offset of approx. 25 cm on low range, and users do not have a mean to compensate.
+
+**Describe the solution you'd like**
+Just tested using the existing analog offset  within this code 
+https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_RangeFinder/AP_RangeFinder_PulsedLightLRF.cpp#L94
+
+    uint16_t _distance_cm = be16toh(val);
+    float offset  = state.offset;
+    // remove momentary spikes
+    if (abs(_distance_cm - last_distance_cm) < 100) {
+        state.distance_cm = (_distance_cm-offset);
+
+
+**Platform**
+[x  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+
+","['Enhancement', 'Library', 'good first issue']",1
+ArduPilot/ardupilot,PRX_ORIENT does not work (Teraranger EVO Tower),"**IF YOU DON'T REMOVE THESE FOUR LINES, THEN YOUR REPORT WILL BE CLOSED AUTOMATICALLY**
+Questions and user problems should be directed at the forum (http://discuss.ardupilot.org)
+_**Please be very sure you have found a bug when opening this issue**_
+If there was a previous discussion in the forum, link to it
+
+### Bug report
+
+**Issue details**
+
+When setting PRX_ORIENT = 1 with a Teraranger Tower Evo hub board, mounted upside down, the sensors stop working and no data comes to proximity screen in MP. Otherwise, setting back to = 0 gives distance data.
+
+**Version**
+3.6.0
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[ X] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+
+**Hardware type**
+Pixhawk 2.1 cube
+
+
+",['good first issue'],1
+ArduPilot/ardupilot,AP_Param can set parameters by name which it shouldn't,"### Bug report
+
+**Issue details**
+
+The ArduSub tests currently pass when they probably shouldn't.
+
+**Version**
+master
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[ X ] Submarine
+
+**Airframe type**
+Sub
+
+**Hardware type**
+SITL
+
+Reproduce with:
+
+```
+--- a/libraries/GCS_MAVLink/GCS_Param.cpp
++++ b/libraries/GCS_MAVLink/GCS_Param.cpp
+@@ -329,6 +329,9 @@ void GCS::send_parameter_value(const char *param_name, ap_var_type param_type, f
+         if ((1U<<i) & mavlink_active) {
+             const mavlink_channel_t _chan = (mavlink_channel_t)(MAVLINK_COMM_0+i);
+             if (HAVE_PAYLOAD_SPACE(_chan, PARAM_VALUE)) {
++                if (!strcmp(param_name, ""ARMING_RUDDER"")) {
++                    abort();
++                }
+                 mavlink_msg_param_value_send(
+                     _chan,
+                     param_name,
+pbarker@bluebottle:~/rc/ardupilot(master)$ 
+```
+
+`./Tools/autotest/autotest.py --gdb --debug build.ArduSub dive.ArduSub`
+
+At that point in the code we've set the value in AP_Param when we shouldn't have.
+
+We're not honouring `check_frame_type` in the find-by-name codepaths.
+",['good first issue'],1
+ArduPilot/ardupilot,Rover: servo output range not set after SERVOx_FUNCTION changed,"Servo output ranges are set as part of the AP_MotorsUGV::init function.  This is only called once soon after startup meaning that if a user changes a SERVOx_FUNCTION value the servo's output range will not be correct.  This could lead to odd values being sent out to the servo until the board is rebooted.
+
+We should first verify that the issue is real by setting a second SERVOx_FUNCTION for throttle and then compare it's output to the the servo3 outputs and see if they're different.
+
+The solution might to one of these:
+
+- call the motors init regularly (1hz?) while the vehicle is disarmed
+- add boolean values of whether various frame types have been enabled (i..e the return value of have_skid_steering()) and then regularly check if the true/false value has changed and if it has call the init() function again.  Note that this might not work in the edge case where the user is setting up a second channel for throttleLeft or throttleRight because setting up this second channel won't affect the return value of the has_skid_steering() function.","['BUG', 'Rover', 'good first issue']",1
+ArduPilot/ardupilot,SITL: AP_Camera object,"### Feature request
+
+**Is your feature request related to a problem? Please describe.**
+We should add a camera object like for SPRAYER and GRIPPER but for CAMERA.
+","['SITL', 'good first issue']",1
+ArduPilot/ardupilot,Rover : Forward to waypoint # when failsafe triggered,"#### Issue details
+_Please describe the problem, or desired feature_
+Current only have RTL, hold etc., it is great if it can be set a waypoint# when failsafe triggered
+#### Version
+_What version was the issue encountered with_
+Rover3.3
+#### Platform
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[x  ] Rover
+[  ] Submarine
+
+#### Airframe type
+_What type of airframe (flying wing, glider, hex, Y6, octa etc)_
+
+#### Hardware type
+_What autopilot hardware was used? (pixhawk, pixracer, PX4FMU etc)_
+Pixhawk 2.1
+#### Logs
+_Please provide a link to any relevant logs that show the issue_
+
+","['Enhancement', 'Rover', 'good first issue']",1
+ArduPilot/ardupilot,AP_RangeFinder: TerraRangeI2C should use non-block semaphore in update(),"As discussed in [this PR related to the Maxbotix I2C rangefinder driver](https://github.com/ArduPilot/ardupilot/pull/8471), the TeraRangerI2C driver should take use semaphore using non-blocking instead of BLOCK_FOREVER from within the [update function](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_RangeFinder/AP_RangeFinder_TeraRangerI2C.cpp#L156).
+
+The reason is that the update() function is called from the mainloop so in the unlikely case that the I/O thread locks up, this would cause the main thread to also lockup.  Of course, the I/O thread locking up would likely lead to a crash anyway as I think we would not receive updates from the main IMU either.","['Library', 'good first issue']",1
+ArduPilot/ardupilot,Copter: add pre-arm check if frame can't find the output for a motor,"In Copter-3.5 (and higher) the AP_Motors library requires that the SERVOx_FUNCTION be set for each motor.  Although these parameter default to good values, it's possible that a user could mess up the SERVOx_FUNCTION settings so that there are no defined outputs for some motors.  We should raise a pre-arm check failure in such cases.","['Enhancement', 'Copter', 'good first issue']",1
+ArduPilot/ardupilot,Copter: vehicle may backup if mission with takeoff as first command is initiated,"Try this in the simulator:
+
+- set up a mission with a take-off command to 50m followed by a waypoint command
+- set MIS_RESTART = 1
+- arm and takeoff in stabilize or loiter, fly the vehicle forward at a reasonably fast speed but do not climb above 50m
+- initiate AUTO
+- the take-off command sets a horizontal target based on the vehicle's position at the moment the take-off command was initiated.  If the vehicle is moving horizontally it will continue flying forward for a bit but then slow and return to where it was.
+
+The solution is that if the vehicle is not-landed, the take-off command should use the horizontal stopping point as it's target instead of the current horizontal position.","['BUG', 'Copter', 'good first issue']",1
+ArduPilot/ardupilot,SITL: reimplement the -P command ,"#### Issue details
+The use of -P is broken as the parameter is erase when the default param file is loaded. 
+See @OXINARF comments on for an initial solution https://github.com/ArduPilot/ardupilot/pull/6040
+","['Enhancement', 'SITL', 'good first issue']",1
+ArduPilot/ardupilot,Plane: Landing permanently disable geofence,"#### Issue details
+Once you begin a landing sequence the geofence can be disabled ( https://github.com/ArduPilot/ardupilot/blob/649ef0fc1614cacf823115cf8433319a4f8da563/ArduPlane/commands_logic.cpp#L404 ) but if you abort the landing or change modes for any reason the fence is never re enabled. (This is not related to AP_Landing changes, and is a pre existing bug)
+
+#### Version
+Master
+
+#### Platform
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[ x ] Plane
+[  ] Rover
+
+EDIT: Updated the link to the code to be useful/correct.","['BUG', 'Plane', 'Safety', 'good first issue']",1
+ArduPilot/ardupilot,MAVlink library prevents OSD from receiving RSSI from 3DR modems,"#### Issue details
+file https://github.com/ArduPilot/ardupilot/blob/master/libraries/GCS_MAVLink/MAVLink_routing.cpp
+
+lines starting 103
+
+```
+if (msg->msgid == MAVLINK_MSG_ID_RADIO ||
+        msg->msgid == MAVLINK_MSG_ID_RADIO_STATUS) {
+        // don't forward RADIO packets
+        return true;
+    }
+```
+
+this code fully filters out MAVLINK_MSG_ID_RADIO_STATUS and MAVLINK_MSG_ID_RADIO messages so no one module (and OSD too) can't see RSSI from 3DR modems.
+
+So in Copter 3.1 3DR RSSI is working, and definitely not working on Copter 3.3/3.4. All OSD users logically [consider](https://www.rcgroups.com/forums/showpost.php?p=36273947&postcount=1861) that it is problem of OSD itself
+
+This messages should be filtered out only on port from which they are comes, and be routed to all another MAVlink ports. Or even better to route this message to all ports and filter them out in 3DR modem firmware.","['Enhancement', 'Library', 'MAVLink', 'good first issue']",1
+ArduPilot/ardupilot,handle_mission_write_partial_list is too strict,"#### Issue details
+
+Currently `GCSCommon.cpp@handle_mission_write_partial_list` checks if the partial waypoint list is inside the current mission count boundary unnecessarily. This limits the utility of partial waypoint writing modifications because we can never expand the mission count.
+
+A very simple case is appending a waypoint to a waypoint list. As far as I know a full rewrite of the mission plan would be required because the only other way to change the waypoint list is sending a `mavlink_msg_mission_count*` message with the previous mission count plus one. This is exactly what a partial list is for.
+
+Removing the upper bound checks would not result in a problem because `GCS_Common.cpp@GCS_MAVLINK::handle_mission_item:839` already handles the case where the mission seq is bigger than mission.num_commands().
+
+Am I wrong in these assumptions? If theoretically there is no problem I can produce a patch removing the upper bound checks.
+","['Library', 'AllVehicles', 'MAVLink', 'good first issue']",1
+ArduPilot/ardupilot,Calibration messages come through as high severity,"For example ""Place vehicle on LEFT side and press any key"" come through at high error severities instead of info level severities. This cause them to pop up as errors in QGroundControl. 
+",['good first issue'],1
+ArduPilot/ardupilot,Copter: add ch7 ch8 opt for set wp yaw behavior to 0 or 2 in flight,,"['Enhancement', 'Copter', 'good first issue']",1
+ArduPilot/ardupilot,Copter: easier test of benchtest the parachute,"At the moment, because of the land-check in the parachute driver (which helps ensure we don't have unintended deployments on the ground near people) it can be difficult for a user to ensure the parachute servo is working during the setup.
+We should perhaps clarify the testing procedure on the wiki and/or allow an override of the landing check - perhaps by allowing the mission planner to send a deploy-chute command with a magic number in param2 to specify that the chute should deploy no-matter what!
+","['Copter', 'Safety', 'good first issue']",1
+ArduPilot/ardupilot,Plane: make throttle slewrates be uint16,"this will help with takeoff throttle slew for catapult launch
+","['Enhancement', 'Plane', 'good first issue']",1
+ArduPilot/ardupilot,Copter: Pre-Arm Safety Check for Auto Missions,"Hi all,
+for safety reasons I suggest a pre-arm check that either disables Auto mode or refuses to arm if the waypoints are further away from the current/home location than a user specified value in meter. 
+This would prevent from ""fly aways"" when one accidentally switches to Auto mode and an ""old"" mission is executed which is located some n km away.
+Kind regards,
+Thorsten
+","['Enhancement', 'Copter', 'Safety', 'good first issue']",1
+ArduPilot/ardupilot,Copter: Activate buzzer when autolanding / buzzer modes,"AC3 does autolanding in certain failsafe conditions.
+For safety reasons and to help locate the copter after a failsafe-induced autolanding, buzzing the buzzer in intervals when in autoland mode would be good. Interval-buzzing is also likely to carry a psychological ""do not touch me""-imperative in case, bywalkers find the copter after a failsafe-induced autolanding.
+
+Buzzer could be controlled by a parameter:
+BUZ_WARN: 0=never (only ARM/DISARM beeps), 1=failsafe autolandings, 2=any autolanding (including manual set LAND mode), 3=any failsafe condition
+","['Enhancement', 'Copter', 'good first issue']",1
+ArduPilot/ardupilot,Copter: ensure visible (led) and verbal (mission planner) warnings appear when Fence is breached,,"['Enhancement', 'NeedAnswer', 'Copter', 'Safety', 'good first issue']",1
+ArduPilot/ardupilot,DDS: Vehicle to report SITL state,"ROS visualization and integration with other sensors require the vehicle's actual state rather than the estimated one, especially if we are using cameras or lidars as a measurement for estimating the state itself.
+
+## Feature request
+
+A new publisher `/ap/sim/groundtruth` with a custom message type, published at at least 50Hz in SITL only.
+
+The message could be like:
+```
+std_msgs/Header header
+
+# Geographic position
+float64 latitude    # degrees
+float64 longitude   # degrees
+float64 altitude    # meters above mean sea level
+
+# Cartesian position in ENU frame relative to home position
+geometry_msgs/Vector3 position
+
+# Orientation quaternion in ENU frame
+geometry_msgs/Quaternion orientation
+
+# Linear velocity in ENU frame (m/s)
+geometry_msgs/Vector3 linear_velocity
+
+# Angular velocity in body frame (rad/s)
+geometry_msgs/Vector3 angular_velocity
+```
+
+**Platform**
+[ x ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+
+",[],0
+ArduPilot/ardupilot,`LOG_FILE_DSRMROT`: allow to work with replay,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+
+Our setup currently uses a CubeOrange+ flight controller paired with a separate system-controller MCU, each with independent logging systems. To troubleshoot recurring EKF issues (such as altitude discontinuities), we have enabled EKF_REPLAY with LOG_DISARMED set to always on, as recommended in the documentation for effective replay functionality.
+
+However, LOG_DISARMED causes the flight controller to continuously log to a single .bin file across multiple flights until reboot is performed. We usually like to separate our system's log per flight. This makes it relatively troublesome to correlate flight controller logs with our system-controller logs on a per-flight basis, as each flight’s data is embedded within one large file rather than segmented by flight event.
+
+At the moment, the workaround that we have done to correlate the flight controller logs and the system controller logs is that we have a separate lua script that captures the current bin file number and transmit it over CAN which is stored in the system controller log. This makes it relatively easier to find the correct flight logs, but the issue where the flight logs gets really big (~300MB or potentially even more) still stands.
+
+
+**Describe the solution you'd like**
+I was wondering if it would be possible that another feature be added where maybe, the log stops being recorded X seconds after the drone is disarmed, and then it creates a new log file afterwards. This would potentially allow us to have 1 log per flight, instead of having multiple flights being recorded (before a reboot is done) in a single bin file which can be quite annoying to analyse.
+
+**Describe alternatives you've considered**
+Up until now, to reduce the file size, we performed the following workaround:
+- Reboot the flight controller prior to every flight test (not entirely practical once out in the field) to capture one flight per log
+- Transmit the current .bin file number over CAN through the use of lua script to simplify the process of finding the corresponding BIN files to the system controller logs. We can then use the timestamps from our system controller logs and the flight controller logs to find the exact flight event.
+- Disable INS logging unless necessary to reduce the file size
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[x] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+",[],0
+ArduPilot/ardupilot,Add support for the u-Blox ZED-X20P GNSS module,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+No
+
+**Describe the solution you'd like**
+Add support for the u-Blox ZED-X20P GNSS module in AP_GPS / UBLOX . 
+
+**Describe alternatives you've considered**
+_A clear and concise description of any alternative solutions or features you've considered._
+
+**Platform**
+[ X ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+This module is the latest version from u-Blox and it supports L1/L2/L5/L6 with RTK. It has current support for u-Blox Point Perfect corrections service (IP and L-band) and future support for in Q1 26 for centimeter positioning with Galileo High Accuracy services delivered via E6b.
+",[],0
+ArduPilot/ardupilot,DDS: External Odometry overflows the timestamp,"The function AP_DDS_External_Odom::handle_external_odom() converts the reported timestamp from microseconds (uint64) to ms (uint32). This causes an overflow when calculating `time_ms`.
+
+https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_DDS/AP_DDS_External_Odom.cpp#L42
+
+For example, it remote_time_us = 1769032352500220, time_ms = 3800825856
+
+## Suggestion
+
+We can convert timestamp to time since boot right in place, accepting some minor jitter.
+
+**Platform**
+[ x ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+",[],0
+ArduPilot/ardupilot,"RTL_ALT_FINAL is relative to home, not terrain, causing hard landing","## Bug report
+
+**Issue details**
+RTL_ALT_FINAL is calculated relative to HOME, even if RTL_TYPE is terrain and TERRAIN is enabled. 
+This causes the drone to descend all the way to ground at LAND_SPEED_HIGH if RTL target (RALLY point) is located higher in the terrain relative to HOME and RTL_ALT_FINAL > 0
+
+**Version**
+Arducopter 4.5.2 in IRL. Verifired in Arducopter 4.7 in SITL.
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[x] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+Hex
+
+**Hardware type**
+Cube orange
+
+**Logs**
+https://www.pahagen.com/ardupilot/00199-2026-01-15_10-34-13.tlog
+(RTL start at approx 95% to end. Mode changed to break approx 5 meters above ground to prevent hard landing).
+",['Copter'],0
+ArduPilot/ardupilot,fix MAV_CMD_DO_START_MAG_CAL autoreboot to only reboot after a successful calibration,"## Feature request
+**Is your feature request related to a problem? Please describe.**
+`MAV_CMD_DO_START_MAG_CAL` has a autoreboot param which reboots upon any final state of calibration, including failures and user cancellation. This seems unnessicary and incorrect
+
+**Describe the solution you'd like**
+patch `MAV_CMD_DO_START_MAG_CAL` param5 (autoreboot) so that setting it only causes a reboot when the calibration succeeds.
+
+**Describe alternatives you've considered**
+maintain the legacy reboot behavior if param5 is set to 1, but introduce a ""reboot only on success"" option by passing 2 to param5. I'm curious if this odd reboot behavior has to be preserved or not, as ""fixing"" it is much simpler and doesn't require a new enum to be created for the parameter.
+
+**Platform**
+[x] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+In the calibration code there is a guard for this for the autosave param, but not the reboot param
+```
+        if (_calibrator[i]->running()) {
+            running = true;
+        } else if (_cal_autosave && !_cal_saved[i] && _calibrator[i]->get_state().status == CompassCalibrator::Status::SUCCESS) {
+            _accept_calibration(uint8_t(i));
+        }
+```
+```
+   if (is_calibrating()) {
+        _cal_has_run = true;
+        return;
+    } else if (_cal_has_run && _auto_reboot()) {    // <- no check of status, always reboots even on user cancellation
+        hal.scheduler->delay(1000);
+        hal.scheduler->reboot();
+    }
+```
+
+I'm interested in creating a PR to fix this issue, but wanted clarification on which approach is best before starting.",[],0
+ArduPilot/ardupilot,Ubuntu 24.04 ROS2 Jazzy build fails fastcdr version,"## Bug report
+
+Setting up Ardupilot on Ubuntu 24.04.03 and ROS2 Jazzy, when I try to run colcon build on the ardupilot_dds_package, the build fails for ROS2 Jazzy giving a fastcdr version mismatch error - 
+
+```
+--- stderr: micro_ros_agent
+CMake Error at CMakeLists.txt:153 (find_package):
+  Could not find a configuration file for package ""fastcdr"" that is
+  compatible with requested version ""1"".
+
+  The following configuration files were considered but not accepted:
+
+    /opt/ros/jazzy/lib/cmake/fastcdr/fastcdr-config.cmake, version: 2.2.5
+    /usr/local/lib/cmake/fastcdr/fastcdr-config.cmake, version: 2.2.6
+
+```
+
+**Version**
+master branch
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+_What type of airframe (flying wing, glider, hex, Y6, octa etc)_
+
+**Hardware type**
+_What autopilot hardware was used? (Pixhawk, Cube, Pixracer, Navio2, etc)_
+
+**Logs**
+
+<img width=""1655"" height=""779"" alt=""Image"" src=""https://github.com/user-attachments/assets/f7c3693e-2955-4eab-bd44-46a5b13785e5"" />
+",['ROS'],0
+ArduPilot/ardupilot,"gimbal_device_id == 0 should control all gimbals, not primary","## Bug report
+
+For the commands listed below, a gimbal device id == 0 is, per the MAVLink spec, intended for *all* gimbal devices.
+On current `master`, it sometimes (always?) instead refers to the ""primary"" device.
+This seems a simple mistake. This issue's purpose is to fix it.
+
+Because fixing it will cause a change in behavior, the fix should be done concurrent with usage spots. Here are some, please comment below if you know of others:
+- MP's 'payload' screen uses a default value of 0. Users expect this to control the primary gimbal, not all. (Perhaps switch default to 1, with a dropdown for user to select ""ALL"" if that's desired.)
+- The auto mode similarly defaults to 0. (Perhaps do the same type of fix: default to 1 instead.)
+
+[Related info]
+Forum post confirming this is bug: https://discuss.ardupilot.org/t/possible-bug-behavior-for-gimbal-device-id-0-in-ap-mount/141900/2
+
+MAVLink commands it may affect:
+- GIMBAL_MANAGER_SET_ATTITUDE (282)
+- GIMBAL_MANAGER_SET_PITCHYAW (287)
+- GIMBAL_MANAGER_SET_MANUAL_CONTROL (288)
+- MAV_CMD_DO_SET_ROI_LOCATION (195)
+- MAV_CMD_DO_SET_ROI_WPNEXT_OFFSET (196)
+- MAV_CMD_DO_SET_ROI_NONE (197)
+- MAV_CMD_DO_SET_ROI_SYSID (198)
+- MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW (1000)
+- MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE (1001)
+
+**Version**
+Current master (f18e69a24e075163b419580355d2b164b71f5f31).
+
+**Platform**
+[x] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+N/A (Is a mavlink + gimbal + AP_Mount issue).
+
+**Hardware type**
+N/A
+
+**Logs**
+N/A","['BUG', 'Gimbal']",0
+ArduPilot/ardupilot,Native Ship / Moving Platform Landing Support for ArduCopter,"Currently, ArduCopter does not provide a native, documented way to land on a moving platform (e.g. ship deck) comparable to the existing Plane / QuadPlane ship landing support.
+
+While Plane has:
+
+SIM_SHIP_ENABLE
+
+Built-in ship simulation
+
+Documented RTL-based landing logic
+
+Official examples and Lua scripts
+
+ArduCopter users must rely on:
+
+External Rover “beacon” vehicles
+
+Undocumented FOLLOW behavior
+
+Custom Lua scripts
+
+Trial-and-error configuration
+
+This makes ship landing with Copter difficult, fragile, and inconsistent, especially in SITL and for research/testing use cases.",[],0
+ArduPilot/ardupilot,Bosch BMP581 baro intermittent I2C read errors,"## Bug report
+
+**Issue details**
+
+We are testing Bosch BMP581 as a replacement barometer on Pixhawk 6X due to ICP20100 and BMP388 being discontinued.
+
+It seems like 
+	1.	BMP581 works fine on I2C2.
+	2.	On I2C4, we see intermittent bad samples that show up as large spikes in pressure or baro altitude. Logic analyzer suggests occasional I2C glitches. This seems like bus reliability or recovery behavior rather than a sensor algorithm issue.
+
+<img width=""813"" height=""265"" alt=""Image"" src=""https://github.com/user-attachments/assets/51068d07-2f27-4fd0-9251-fb634ef2f821"" />
+baro0 (i2c4, BMP581 glitches) 
+
+<img width=""770"" height=""328"" alt=""Image"" src=""https://github.com/user-attachments/assets/00904aef-9db4-45f5-bb2a-5e95dd4f2155"" />
+Baro1 (I2C2,BMP581, No issue) 
+
+<img width=""1283"" height=""555"" alt=""Image"" src=""https://github.com/user-attachments/assets/e3718308-2979-4f7d-ac88-2d59b1f3a647"" />
+
+**Version**
+Master
+
+**Platform**
+[ X ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+Copter
+
+**Hardware type**
+Holybro PIxhawk 6X
+
+**Logs**
+[Log ](https://drive.google.com/file/d/1VpvUOkHgXlUoMBhySO-Vg0Qk_fINYPsm/view?usp=sharing)
+",[],0
+ArduPilot/ardupilot,speedybeef4v4  failed to initialize MAVFTP when using gps (serial6) + mavlink on (serial3),"ArduCopter 4.6.1, trying 4.6.3 - same result - this config make  - failed to initialize MAVFTP - when connecting to FC. 
+Disabling serial 6 - fix problem!
+
+[config.zip](https://github.com/user-attachments/files/24607303/config.zip)",['NeedAnswer'],0
+ArduPilot/ardupilot,SIGFPE via incorrect type conversion on fence file upload,"## Bug report
+
+**Issue details**
+A **SIGFFPE** signal is raised in functions **_convert_MISSION_ITEM_INT_to_AC_PolyFenceI_item_int_** ([MissionItemProtocol_Fence.cpp](https://github.com/ArduPilot/ardupilot/blob/master/libraries/GCS_MAVLink/MissionItemProtocol_Fence.cpp)) and/or _**is_positive**_ ([AP_Math.h)](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Math/AP_Math.cpp)) during an attempted upload of a crafted fence files with invalid values of parameter **_param1_**. Floating point exception occurs due to unchecked type conversions, leading to immediate autopilot process termination and loss of GCS – vehicle communication. 
+
+
+**Steps to reproduce**
+Vulnerability can be triggered by uploading fence files with parameters set to invalid values:
+
+1. **_fence-oor.txt_** – with **_param1_** set to “_**-1e+10**_” (minus 10 billion)
+```
+QGC WPL 110
+0	0	0	5001	-1e+10		0	0	0	0	0	0	0
+```
+2. _**fence-nan.txt**_  - with **_param1_** set to “_NaN_” (Not-a-Number)
+```
+QGC WPL 110
+0	0	0	5003	 NaN		0	0	0	0	0	0	0
+```
+To reproduce the vulnerability for ArduCopter in SITL environment, follow below steps:
+
+1. Run SITL simulation for ArduCopter in debug mode
+    `$ Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w -D -G -ubsan`
+
+2. Wait for vehicle to initialize into PreArm state
+   `pre-arm good`
+
+3. Upload one of the fence files to the vehicle using MAVProxy GCS console
+```
+> fence load fence-oor.txt
+> fence load fence-nan.txt
+```
+
+4. Observe GCS connection and vehicle process termination
+
+```
+Sent all 1 fence items
+no link
+link 1 down
+```
+
+Exception raised for **_fence-oor.txt_** 
+```
+Thread 1 ""arducopter"" received signal SIGFPE, Arithmetic exception.
+MissionItemProtocol_Fence::convert_MISSION_ITEM_INT_to_AC_PolyFenceItem (mission_item_int=..., ret=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol_Fence.cpp:117
+117             ret.vertex_count = mission_item_int.param1;
+(gdb) print ret.vertex_count
+$5 = 0 '\000'
+(gdb) print mission_item_int.param1
+$6 = -1e+10
+
+```
+
+Exception raised for **_fence-nan.txt_**
+```
+Thread 1 ""arducopter"" received signal SIGFPE, Arithmetic exception.
+0x00005555555cd03c in is_positive<float> (fVal1=nan(0x400000)) at ../../libraries/AP_Math/AP_Math.h:68
+68          return (static_cast<float>(fVal1) >= FLT_EPSILON);
+(gdb) print fVal1
+$7 = nan(0x400000)
+```
+
+Backtrace shows that both input files had a similar effect upon upload, resulting in the FPE due to unchecked type conversions, but raised in different parts of the code:
+
+1. **_fence-oor.txt_** - function **_convert_MISSION_ITEM_INT_to_AC_PolyFenceI_item_int_** responsible for converting MAVLink mission item into an **_AC_PolyFenceItem_** structure,
+performs an unchecked assignment of **_param1_** value to **_vertex_count_** of type _uint_8_t_.
+2. **_fence-nan.txt_** - function **_is_positive_**, which simply checks whether a float is greater than zero, makes a float-to-NaN comparison between **_fVal1_** (holding _**param1**_ value) and **_FLT_EPSILON_** (of type float), which raises floating-point operation exception. 
+
+**Root cause**
+The root cause of this vulnerability is the lack of sufficient validation of parameters carried by **_param1_**, allowing out-of-range or non-numerical values to trigger an unhandled exception. Existing sanitization routine performs none or minimal input validation by doing only upper bound check (>255) for selected parameters, making it highly insufficient. 
+Also keep in mind that demonstrated examples exploit only single case for specific 
+commands (5001 and 5003), but the same vulnerability is present in all fence-specific commands:
+
+- _MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION_  (5001) for  **_vertex_count_** =<(_-1e+10_)
+- _MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION_  (5002) for **_vertex_count_** =<(_-1e+10_)
+- _MAV_CMD_NAV_FENCE_CIRCLE_EXCLUSION_  (5003) for **_radius_** == _NaN_
+- _MAV_CMD_NAV_FENCE_CIRCLE_EXCLUSION_  (5004) for **_radius_** == _NaN_
+
+
+**Impact**
+The impact of this vulnerability is severe, affecting both operational reliability and flight safety across all ArduPilot vehicles. When an attacker in the network or unintentional operator uploads improperly constructed fence file, the autopilot software immediately crashes due to unhandled exception. As a direct result, the connection between the GCS and the vehicle is abruptly lost, so any ongoing automated mission is terminated. For vehicle in the air, this loss of control may lead to dangerous situations including uncontrolled flight, failure to perform failsafe procedures, or even a crash.
+
+**Recommendation**
+Enforce strict input validation and bounds checking on all externally supplied fence parameters before they are stored or used in arithmetic operations.
+
+**Version**
+_4.6.3_
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[X] Copter
+[X] Plane
+[X] Rover
+[X] Submarine
+
+
+**Logs**
+
+Backtrace for **_fence_oor.txt_**
+```
+#0  MissionItemProtocol_Fence::convert_MISSION_ITEM_INT_to_AC_PolyFenceItem (mission_item_int=..., ret=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol_Fence.cpp:117
+#1  0x000055555595b877 in MissionItemProtocol_Fence::replace_item (this=0x555555b79260, mission_item_int=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol_Fence.cpp:155
+#2  0x000055555595ad8b in MissionItemProtocol::handle_mission_item (this=0x555555b79260, msg=..., cmd=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol.cpp:291
+#3  0x000055555570e1a3 in GCS_MAVLINK::handle_mission_item (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1028
+#4  0x0000555555715f2a in GCS_MAVLINK::handle_common_mission_message (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4694
+#5  0x0000555555715a60 in GCS_MAVLINK::handle_message (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4425
+#6  0x00005555555d224e in GCS_MAVLINK_Copter::handle_message (this=0x555555b84ea0, msg=...) at ../../ArduCopter/GCS_MAVLink_Copter.cpp:1250
+#7  0x000055555570f96b in GCS_MAVLINK::raw_packetReceived (this=0x555555b84ea0, framing_status=1 '\001', status=..., msg=...)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1924
+#8  0x000055555570fbcb in GCS_MAVLINK::update_receive (this=0x555555b84ea0, max_time_us=1000) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1976
+#9  0x0000555555711aaa in GCS::update_receive (this=0x555555ae4030 <copter+40240>) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:2797
+#10 0x00005555555cd930 in Functor<void>::method_wrapper<GCS, &GCS::update_receive> (obj=0x555555ae4030 <copter+40240>)
+    at ../../libraries/AP_HAL/utility/functor.h:88
+#11 0x0000555555684774 in Functor<void>::operator() (this=0x555555aa6980 <Copter::scheduler_tasks+1344>) at ../../libraries/AP_HAL/utility/functor.h:54
+#12 0x00005555556e72dd in AP_Scheduler::run (this=0x555555ada458 <copter+344>, time_available=2500) at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:270
+#13 0x00005555556e778e in AP_Scheduler::loop (this=0x555555ada458 <copter+344>) at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:399
+#14 0x00005555556ed841 in AP_Vehicle::loop (this=0x555555ada300 <copter>) at ../../libraries/AP_Vehicle/AP_Vehicle.cpp:559
+#15 0x000055555583d4b8 in HAL_SITL::run (this=0x555555af6860 <hal_sitl_inst>, argc=12, argv=0x7fffffffdb68, callbacks=0x555555ada300 <copter>)
+    at ../../libraries/AP_HAL_SITL/HAL_SITL_Class.cpp:298
+#16 0x00005555555cce9f in main (argc=12, argv=0x7fffffffdb68) at ../../ArduCopter/Copter.cpp:997
+```
+
+
+Backtrace for **_fence-nan.txt_**
+```
+#0  0x00005555555cd03c in is_positive<float> (fVal1=nan(0x400000)) at ../../libraries/AP_Math/AP_Math.h:68
+#1  0x00005555557751f7 in AC_PolyFence_loader::validate_fence (this=0x555555adfa60 <copter+22368>, new_items=0x555555b78370, count=1)
+    at ../../libraries/AC_Fence/AC_PolyFence_loader.cpp:1032
+#2  0x000055555577554f in AC_PolyFence_loader::write_fence (this=0x555555adfa60 <copter+22368>, new_items=0x555555b78370, count=1)
+    at ../../libraries/AC_Fence/AC_PolyFence_loader.cpp:1110
+#3  0x000055555595ba9c in MissionItemProtocol_Fence::complete (this=0x555555b79260, _link=...) at ../../libraries/GCS_MAVLink/MissionItemProtocol_Fence.cpp:192
+#4  0x000055555595af40 in MissionItemProtocol::transfer_is_complete (this=0x555555b79260, _link=..., msg=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol.cpp:325
+#5  0x000055555595ae63 in MissionItemProtocol::handle_mission_item (this=0x555555b79260, msg=..., cmd=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol.cpp:312
+#6  0x000055555570e1a3 in GCS_MAVLINK::handle_mission_item (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1028
+#7  0x0000555555715f2a in GCS_MAVLINK::handle_common_mission_message (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4694
+#8  0x0000555555715a60 in GCS_MAVLINK::handle_message (this=0x555555b84ea0, msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4425
+#9  0x00005555555d224e in GCS_MAVLINK_Copter::handle_message (this=0x555555b84ea0, msg=...) at ../../ArduCopter/GCS_MAVLink_Copter.cpp:1250
+#10 0x000055555570f96b in GCS_MAVLINK::raw_packetReceived (this=0x555555b84ea0, framing_status=1 '\001', status=..., msg=...)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1924
+#11 0x000055555570fbcb in GCS_MAVLINK::update_receive (this=0x555555b84ea0, max_time_us=1000) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1976
+#12 0x0000555555711aaa in GCS::update_receive (this=0x555555ae4030 <copter+40240>) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:2797
+#13 0x00005555555cd930 in Functor<void>::method_wrapper<GCS, &GCS::update_receive> (obj=0x555555ae4030 <copter+40240>)
+    at ../../libraries/AP_HAL/utility/functor.h:88
+#14 0x0000555555684774 in Functor<void>::operator() (this=0x555555aa6980 <Copter::scheduler_tasks+1344>) at ../../libraries/AP_HAL/utility/functor.h:54
+#15 0x00005555556e72dd in AP_Scheduler::run (this=0x555555ada458 <copter+344>, time_available=2500) at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:270
+#16 0x00005555556e778e in AP_Scheduler::loop (this=0x555555ada458 <copter+344>) at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:399
+#17 0x00005555556ed841 in AP_Vehicle::loop (this=0x555555ada300 <copter>) at ../../libraries/AP_Vehicle/AP_Vehicle.cpp:559
+#18 0x000055555583d4b8 in HAL_SITL::run (this=0x555555af6860 <hal_sitl_inst>, argc=12, argv=0x7fffffffdb68, callbacks=0x555555ada300 <copter>)
+    at ../../libraries/AP_HAL_SITL/HAL_SITL_Class.cpp:298
+#19 0x00005555555cce9f in main (argc=12, argv=0x7fffffffdb68) at ../../ArduCopter/Copter.cpp:997
+```",[],0
+ArduPilot/ardupilot,SIGFPE via incorrect type conversion on mission file upload,"## Bug report
+
+**Issue details**
+
+A **SIGFFPE** signal is raised in the function **_mavlink_int_to_mission_cmd_** ([AP_Mission.cpp](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mission/AP_Mission.cpp))  during an attempted upload of a crafted mission file with invalid values of parameter **_param1_**.
+Floating point exception occurs due to unchecked float-to-integer type conversion, leading to immediate autopilot process termination and loss of Ground Control Station (GCS)   – vehicle communication.
+
+**Steps to reproduce**
+
+Vulnerability is triggered by uploading mission file with **_param1_** set to out-of-range value. 
+That leads to failure during unchecked _**float**_ (32 bit) to **_uint_16_t_** (16 bit) conversion in _**mavlink_int_to_mission_cmd**_ ([AP_Mission.cpp](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mission/AP_Mission.cpp))  function. Below demonstration uses a sample crafted mission file following plain-text format, with param1 set to **_1e+10_** (10 billion), that was uploaded to ArduCopter using MAVProxy _**wp load**_ method. 
+
+```
+QGC WPL 110
+0	0	0	0	1e+10	0	0	0	0	0	0	0
+```
+To reproduce the vulnerability for ArduCopter in SITL environment, follow below steps:
+
+1. Run SITL simulation for ArduCopter in debug mode
+    `$ Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w -D -G `
+2. Wait for vehicle to initialize into PreArm state
+     `pre-arm good`
+3. Upload mission file to the vehicle using MAVProxy GCS console
+    `> wp load mission.txt`
+4. Observe GCS connection and vehicle process termination
+```
+Sent all 1 waypoints
+no link
+link 1 down
+```
+
+```
+Thread 1 ""arducopter"" received signal SIGFPE, Arithmetic exception.
+AP_Mission::mavlink_int_to_mission_cmd (packet=..., cmd=...)
+    at ../../libraries/AP_Mission/AP_Mission.cpp:1103
+1103            cmd.p1 = packet.param1;
+(gdb) print cmd.p1
+$1 = 0
+(gdb) print packet.param1
+$2 = 1e+10
+```
+
+
+**Root cause**
+
+Backtrace of the error shows that insecure type conversion occurs within the **_mavlink_int_to_mission_cmd_**   ([AP_Mission.cpp](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mission/AP_Mission.cpp)) function, which converts MAVLink message into a **_Mission_Command_** object to be stored in EEPROM vehicle memory. SIGFPE signal is raised at line 1103 due to an arithmetic exception caused by an unsafe assignment between mismatched types with vastly different ranges.
+- **_packet.param1_** is a 32-bit float
+- **_cmd.p1_** is a 16-bit unsigned integer
+
+The root cause of this vulnerability is the lack of sufficient bounds checking on **_param1_** prior to type conversion, allowing out-of-range values to trigger a hardware exception. Existing sanitization function **_sanity_check_params_** only performs minimal validation by rejecting infinite or selectively NaN values for parameters 1–4 and does not enforce any command-specific numeric ranges or limits, making this protection highly insufficient.
+
+
+**Impact**
+The impact of this vulnerability is severe, affecting both operational reliability and flight safety across all affected ArduPilot vehicles including ArduCopter, ArduRover and ArduSub. When an attacker in the network or unintentional operator uploads improperly constructed mission file, the autopilot software immediately crashes due to unhandled exception.  As a direct result, the connection between the GCS and the vehicle is abruptly lost, so any ongoing automated mission is terminated. For vehicle in the air, this loss of control may lead to dangerous situations including uncontrolled flight, failure to perform failsafe procedures, or even a crash.
+
+
+**Recommendations**
+Enforce strict input validation and bounds checking on all externally supplied mission parameters before they are stored or used in arithmetic operations.
+
+
+**Version**
+_4.6.3_
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[X] Copter
+[X] Plane
+[X] Rover
+[X] Submarine
+
+
+**Logs**
+
+Backtrace of the error:
+```
+(gdb) bt
+#0  AP_Mission::mavlink_int_to_mission_cmd (packet=..., cmd=...)
+    at ../../libraries/AP_Mission/AP_Mission.cpp:1103
+#1  0x000055555595c58b in MissionItemProtocol_Waypoints::replace_item (
+    this=0x555555b791e0, mission_item_int=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol_Waypoints.cpp:106
+#2  0x000055555595ad8b in MissionItemProtocol::handle_mission_item (
+    this=0x555555b791e0, msg=..., cmd=...)
+    at ../../libraries/GCS_MAVLink/MissionItemProtocol.cpp:291
+#3  0x000055555570e1a3 in GCS_MAVLINK::handle_mission_item (
+    this=0x555555b84ea0, msg=...)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1028
+#4  0x0000555555715f2a in GCS_MAVLINK::handle_common_mission_message (
+    this=0x555555b84ea0, msg=...)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4694
+#5  0x0000555555715a60 in GCS_MAVLINK::handle_message (this=0x555555b84ea0, 
+    msg=...) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:4425
+#6  0x00005555555d224e in GCS_MAVLINK_Copter::handle_message (
+    this=0x555555b84ea0, msg=...)
+    at ../../ArduCopter/GCS_MAVLink_Copter.cpp:1250
+#7  0x000055555570f96b in GCS_MAVLINK::raw_packetReceived (
+    this=0x555555b84ea0, framing_status=1 '\001', status=..., msg=...)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1924
+#8  0x000055555570fbcb in GCS_MAVLINK::update_receive (this=0x555555b84ea0, 
+    max_time_us=1000) at ../../libraries/GCS_MAVLink/GCS_Common.cpp:1976
+#9  0x0000555555711aaa in GCS::update_receive (
+    this=0x555555ae4030 <copter+40240>)
+    at ../../libraries/GCS_MAVLink/GCS_Common.cpp:2797
+#10 0x00005555555cd930 in Functor<void>::method_wrapper<GCS, &GCS::update_receive> (obj=0x555555ae4030 <copter+40240>)
+    at ../../libraries/AP_HAL/utility/functor.h:88
+#11 0x0000555555684774 in Functor<void>::operator() (
+    this=0x555555aa6980 <Copter::scheduler_tasks+1344>)
+    at ../../libraries/AP_HAL/utility/functor.h:54
+#12 0x00005555556e72dd in AP_Scheduler::run (this=0x555555ada458 <copter+344>, 
+    time_available=2500) at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:270
+#13 0x00005555556e778e in AP_Scheduler::loop (this=0x555555ada458 <copter+344>)
+    at ../../libraries/AP_Scheduler/AP_Scheduler.cpp:399
+#14 0x00005555556ed841 in AP_Vehicle::loop (this=0x555555ada300 <copter>)
+    at ../../libraries/AP_Vehicle/AP_Vehicle.cpp:559
+#15 0x000055555583d4b8 in HAL_SITL::run (this=0x555555af6860 <hal_sitl_inst>, 
+    argc=12, argv=0x7fffffffdb68, callbacks=0x555555ada300 <copter>)
+    at ../../libraries/AP_HAL_SITL/HAL_SITL_Class.cpp:298
+#16 0x00005555555cce9f in main (argc=12, argv=0x7fffffffdb68)
+    at ../../ArduCopter/Copter.cpp:997
+```",[],0
+ArduPilot/ardupilot,Provide a method to get a binary log of all serial data,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+
+I have a serial port, currently configured for a mavlink connection. The autopilot is not accessible when the vehicle is assembled. I want to have an easy way to decode traffic on the port. If it was, I'd use a Saleae logic analyzer, decode as async serial, and then run use pymavlink to decode the stream.
+
+I cant use the mavlink inspector in mission planner because this is an internal connection in the vehicle, and some packets on this mavlink interface are not also repeated on the GCS link.
+
+**Describe the solution you'd like**
+
+Provide an option to enable logging for the serial port, which will log all data to a binary file on the SD card.
+I can then use mavftp to transfer this to my computer and interpret the contents.
+
+**Describe alternatives you've considered**
+
+Turning on LOG_REPLAY does not log serial port traffic.
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+
+",['FeatureRequest'],0
+ArduPilot/ardupilot,scripting SRV_Channels:get_output_scaled nonzero values when disarmed,"## Bug report
+
+**Issue details**
+
+When reading SRV_Channels:get_output_scaled it does not update when disarmed. It can produce nonzero values when disarmed.
+
+To get this issue:
+- run the lua script
+- arm, manual or something, see values change for SRV_Channels:get_output_scaled(73)
+- while the value is nonzero, disarm
+- the value will not go to zero or update.
+
+
+**Version**
+master branch as of a few months ago, so no specific version.
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[X] Rover
+[  ] Submarine
+
+at least rover, probably all platforms.
+
+**Hardware type**
+RPi, HAL Linux
+
+Here's my minimal test
+```lua
+
+
+-- =====================
+-- MAIN LOOP
+-- =====================
+function update()
+    local l_sig = SRV_Channels:get_output_scaled(73)
+    local r_sig = SRV_Channels:get_output_scaled(74)
+    if not arming:is_armed() then
+        l_sig = 0
+        r_sig = 0
+    end
+
+    gcs:send_text(6, ""direct measurement: "" .. SRV_Channels:get_output_scaled(73) .. "" with disarm: "" .. l_sig)
+    return update, 1000
+end
+
+return update()
+```
+
+**Logs**
+_Please provide a link to any relevant logs that show the issue_
+",[],0
+ArduPilot/ardupilot,Drone fails to disarm in BRAKE mode while landed with low throttle (1050us),"## Bug report
+
+**Issue details**
+According to the [Brake mode documentation](https://ardupilot.org/copter/docs/brake-mode.html), ""If the vehicle is landed in Brake mode it will immediately disarm."" 
+During testing, when the vehicle is on the ground with the throttle held at a low level (above minimum but insufficient for takeoff), switching to Brake mode does not trigger an immediate disarm. Instead, the motors continue to spin at an idle or low speed indefinitely.
+
+Reproduce the steps:
+1. mode acro
+2. arm throttle
+3. rc 3 1050
+4. mode brake
+
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[x] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+
+**Logs**
+
+[log_0_2026-1-8-15-31-14.bin.zip](https://github.com/user-attachments/files/24490502/log_0_2026-1-8-15-31-14.bin.zip)
+",['NeedAnswer'],0
+ArduPilot/ardupilot,Python 3.9 EOL while search for python.exe if sources cloned in WSL2,"## Bug report
+
+**Issue details**
+
+My initial report was here: https://github.com/ArduPilot/ardupilot_vscode_devenv/issues/42
+
+If ardupilot code was cloned in WSL2, then ""upload firmware to the controller"" task won't work. It generates an error:
+
+```
+WSL2 firmware uploads use the host's Windows Python.exe so it has access to the COM ports.
+
+        Windows python.exe not found
+        Please download Windows Installer 3.9.x (not 3.10) from https://www.python.org/downloads/
+        and make sure to add it to your path during the installation. Once installed, run this
+        command in Powershell or Command Prompt to install some packages:
+        
+        pip.exe install empy==3.3.4 pyserial
+```
+
+1) Python 3.9 is deprecated, and no installers are available on the python.org for it https://www.python.org/downloads/release/python-3925/. So maybe that error message should be removed/updated.
+
+2) pyserial works fine in Python 3.12
+
+
+I have fixed that this way:
+`Tools/ardupilotwaf/chibios.py` on line 102 change `where.exe python.exe` to `which python.exe` and on line 106 change `\Python\Python` to `/Python/Python`.
+
+
+
+**Version**
+4.7.0-dev
+
+**Platform**
+N/A
+
+**Airframe type**
+n/a
+
+**Hardware type**
+n/a
+
+**Logs**
+n/a
+",['NeedAnswer'],0
+ArduPilot/ardupilot,DevEBox and WeAct Studio boards support request,"
+## Feature request
+
+DevEBox  stm32H743 and stm32H750 with 25mhz  crystal frequency
+
+Issues is currently having difficulty building from the latest Ardupilot firmware not completing with memory errors
+apart from which if it does build it could not connect 
+
+WeAct Studio stm32H743  with 25mhz crystal frequency
+
+Id need help for this board as well into the supported List
+nice to add dual imu feature
+
+**Describe alternatives you've considered**
+_A clear and concise description of any alternative solutions or features you've considered._
+
+**Platform**
+[v  ] All
+[  v] AntennaTracker
+[ v ] Copter
+[ v ] Plane
+[ v ] Rover
+[v  ] Submarine
+
+**Additional context**
+
+these are development board nice to have for users who wish to experiments and would be helpful with a sample  hwdef in the list as a guide as a working flight controller 
+",[],0
+ArduPilot/ardupilot,FPE in SITL,"## Bug report
+
+Getting the following FPE in SITL quite regularly:
+
+<img width=""1573"" height=""1382"" alt=""Image"" src=""https://github.com/user-attachments/assets/5115fd11-2981-471b-a465-760618e1d446"" />
+
+Apologies for the screenshot, can't seem to cut and paste
+
+**Issue details**
+
+Crash in SITL
+
+**Version**
+master
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[X] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+",[],0
+ArduPilot/ardupilot,Unexpected Disarm in ACRO mode when Throttle at zero during GCS/RC Failsafe while airborne,"## Bug report
+
+**Issue details**
+
+In ACRO mode, if the vehicle is airborne and the throttle is at the minimum position, triggering an GCS/RC Failsafe causes the copter to immediately disarm in mid-air.
+
+While the ""Disarm on low throttle"" logic is expected on the ground, it should not be triggered when the flight controller detects the vehicle is still in flight (Airborne), especially during a failsafe event where a controlled RTL or Land is expected.
+
+See line 472:
+https://github.com/ArduPilot/ardupilot/blob/cef6eb780255cc398657a97aa4ef13e438296490/ArduCopter/events.cpp#L463-L482
+
+Steps to Reproduce:
+
+1. Take off and switch to ACRO mode.
+2. Lower the throttle stick to the minimum position.
+3. param set FS_THR_VALUE -1 (trigger an RC Failsafe)/param set FS_GCS_TIMEOUT 0 (trigger a GCS Failsafe).
+4. The copter disarms immediately and falls.
+5. Expected Result: The copter should trigger the configured Failsafe action (e.g., RTL or Land) regardless of the throttle position, as long as it is airborne.
+
+**Version**
+Copter 4.4 -> main
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[x] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+sitl
+
+**Logs**
+RC Failsafe:
+[log_0_2025-12-27-12-45-46.zip](https://github.com/user-attachments/files/24352570/log_0_2025-12-27-12-45-46.zip)
+
+GCS Failsafe:
+[log_0_2026-1-7-16-26-53.bin.zip](https://github.com/user-attachments/files/24468172/log_0_2026-1-7-16-26-53.bin.zip)
+",[],0
+ArduPilot/ardupilot,Buffer overflow in ESP32 WiFi drivers and XPlane SITL connector,"
+## Bug report
+
+I found a buffer overflow vulnerability in ArduPilot:
+
+1. ESP32 WiFi drivers:
+   - In libraries/AP_HAL_ESP32/WiFiDriver.cpp and WiFiUdpDriver.cpp, strcpy is used to copy SSID and password into fixed-size buffers.
+2. SITL XPlane connector:
+   - In libraries/SITL/SIM_XPlane.cpp, strcpy is used to copy dataref names into fixed-size buffers.
+
+Using strings longer than the buffer size can cause stack-buffer-overflow and program crash. 
+I verified this using a minimal test case compiled with AddressSanitizer.
+
+
+**Version**
+Branch: master
+Commit: ed2c34310cd7771bf920ee855a3d22dab72f3f37
+
+**Platform**
+[X] All
+[X] Copter
+[X] Plane
+[X] Rover
+[X] Submarine
+
+
+**Airframe type**
+Not applicable (HAL/SITL issue)
+
+**Hardware type**
+- ESP32 (WiFi drivers)
+- SITL (XPlane connector)
+
+
+**Logs**
+
+https://github.com/user-attachments/assets/880f2e3f-6190-452b-8c0e-fc96087965c8
+",[],0
+ArduPilot/ardupilot,[SITL + ardupilot_gazebo] Iris with 3-DOF gimbal: gimbal jumps to an unexpected pose during SITL startup initialization,"## Bug report
+
+**Issue details**
+**Steps to reproduce**
+
+(1)Start the Gazebo world and model (the gimbal is initially aligned with the vehicle heading in Gazebo):
+gz sim -v4 -r ~/ardupilot/ardupilot_gazebo/worlds/iris_runway.sdf
+(2)Start SITL and load the gimbal parameter file:
+./Tools/autotest/sim_vehicle.py -D -v ArduCopter -f JSON \
+  --add-param-file=$HOME/work/ardupilot/ardupilot_gazebo/config/gazebo-iris-gimbal.parm \
+  --console --map
+
+**Expected behavior**
+
+After starting SITL, the gimbal should not suddenly jump to an extreme pose during initialization. At minimum, it should remain aligned with the vehicle heading, or first stabilize to a predictable neutral/retract pose. If RC Targeting is the default mode, a more reasonable initial RC input is expected.
+
+<img width=""261"" height=""175"" alt=""Image"" src=""https://github.com/user-attachments/assets/4d239d0f-26f0-48b4-af37-4c872d763676"" />
+
+**Actual behavior**
+
+After starting SITL, the gimbal in Gazebo quickly twists to a strange orientation, and the initial pose aligned with the vehicle heading is broken.
+Early RC inputs captured from RC_CHANNELS are:
+chan6_raw=1000
+chan7_raw=1000
+chan8_raw=1800
+Meanwhile, the parameter file configures the calibration range for RC6/7/8 as RCx_MIN=1100, RCx_MAX=1900, so the raw values at startup are below the configured lower bound (at least CH6/7: 1000 < 1100).
+Early gimbal attitude captured from GIMBAL_DEVICE_ATTITUDE_STATUS:
+q = [0.3921, 0.7231, -0.5320, 0.2010] (w, x, y, z)
+The Euler angles converted from this quaternion show a large-angle combination.
+
+<img width=""238"" height=""177"" alt=""Image"" src=""https://github.com/user-attachments/assets/f6d60834-a67b-451a-84e2-288e35f24781"" />
+
+**Version**
+
+ArduPilot: SITL (ArduCopter), started via sim_vehicle.py
+Simulation: Gazebo (gz sim) + ardupilot_gazebo model (iris + gimbal)
+OS: Ubuntu 22.04
+ArduPilot: ArduPilot-4.6.0-beta1-5055-gebe4fc2074
+ardupilot_gazebo commit: git rev-parse HEAD
+Gazebo / gz-sim version: Gazebo Sim, version 8.10.0
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+
+**Hardware type**
+
+**Logs**
+
+",[],0
+ArduPilot/ardupilot,ESC to RPM sensor processing,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+
+* AM32 ESCs sometimes report RPM values that are significantly out of range (50k+ RPM on a motor that spins at 4k RPM). Thist mostly happens during spool up causing heli governor using ESC RPM telemetry to fail to engage)
+* BDShot RPM telemetry (on AM32 ESCs) is jittery ±10RPM jitter at 4k RPM which probably messes with the Ardupilot governor, causing throttle jitter.
+
+**Describe the solution you'd like**
+Adding lowpass filter to RPM library and respecting RPMx_MAX when taking data from ESC telemetry would alleviate these issues. At the cost of slightly decreased governor tracking accuracy
+
+**Describe alternatives you've considered**
+
+* Checking that the governor is engaged prior to takeoff
+* Kickstarting the motor with the interlock to avoid the issue
+* Cycling the interlock to re-engage the governor 
+* Using throttle curve (not feasible due to large voltage range and apparent lack of voltage compensation)
+
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[ X ] Copter (heli)
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+Will add screenshots soon.
+",[],0
+ArduPilot/ardupilot,Standard Modes Support problems,"With the new Standard Modes support in ArduCopter on master QGC now shows those modes in it's ui. There are a number of problems from a usability standpoint with this new functionality:
+* The flight mode names are in ALL CAPS. And include things like ADSB_AVOID. From an end user perspective all caps and using underscores in flight mode names is quite jarring in the QGC UI. It's not technically a problem, just not very user friendly from a good user interface standpoint. It's also pretty jarring for existing QGC+ArduPilot users coming from older firmwares where QGC was in control of flight mode names and used Mixed Case everywhere with no underscores.
+* Also the list of flight modes is massively long. I don't know if some of these flight modes returned fall into the category of not-selectable by a user. If so, they should be marked as such in the protocol. Also would be nice if there was use of the ""advanced"" setting in the protocol. Then QGC could filter the list so that it wasn't so formidable at first glance.",[],0
+ArduPilot/ardupilot,Add Units to PID parameters,By adding units to PID parameters we can help analysis and understanding of the controllers.,"['Copter', 'FeatureRequest']",0
+ArduPilot/ardupilot,Ensure Parameter metadata @Range and @Increment display correctly in Mission Planner,Mission planner uses the @Increment value to define the number of zero's displayed. This means that Mission planner may not display the best resolution if the @Increment has been set based on a larger tuning step.,"['Copter', 'FeatureRequest']",0
+ArduPilot/ardupilot,Support MAVLink COMPONENT_METADATA,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+QGC folks, in particular @DonLakeFlyer have to manually update the build each new AP version for the link to the new parameters.
+
+**Describe the solution you'd like**
+If we respond to COMPONENT_METADATA then we can give QGC the correct URL for the version, and eventually embed the data on the board with enough space.
+
+**Describe alternatives you've considered**
+We could update QGC to calculate the URL itself, but that would be additional complication.
+
+**Platform**
+[X] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+
+Needed for QGC to update to ARMING_SKIPCHK: https://github.com/ArduPilot/ardupilot/pull/31568
+
+Or some other method of putting 4.7 dev metadata into https://github.com/arduPilot/parameterrepository
+",[],0
+ArduPilot/ardupilot,Sub: 4.5 forward-port list,"This is a list of anything in an ArduSub release branch that needs equivalent behaviour implemented in master. Some PRs/commits may be able to be directly forward ported, while others will require additional considerations and discussion for their relevance and implementation with respect to the other ArduPilot firmware variants. If new missing items/commits are identified they will be added.
+
+## Parameter migration / bad configuration detection
+- [x] Automatic transition from old `BRD_PWM_COUNT` GPIO determination functionality, to new `GPIO (-1)` `SERVOx_FUNCTION` values and/or using the `SERVO_GPIO_MASK`
+    - #31685
+    - #31702
+    - Without this the leak sensor may be silently broken, which is a critical warning system in Sub vehicles
+    - It also affects relays, which could benefit from some user warnings if the autopilot can tell they're misconfigured
+- [ ] Automatic transition from `RCIN9 (59)`/`RCIN10 (60)` channel passthrough piggy-backing to new dedicated `Lights1 (181)`/`Lights2 (182)` `SERVOx_FUNCTION` outputs
+    - #31109
+    - This parameter change also broke programmatic control of lights outputs, which has not yet been resolved
+        - The illuminator protocol [is being considered](https://github.com/ArduPilot/ardupilot/issues/28814#issuecomment-3617607624) as a replacement for the old [`DO_SET_SERVO`](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_SERVO) commands (which required knowing the channel number of the output), although it is a fair amount more complex
+- [ ] Automatic transition from old `Disabled (0)` to new `Actuator1 (184)`/`Actuator2 (185)`/`Actuator3 (186)` `SERVOx_FUNCTION` outputs
+    - #31109 
+    - This parameter change also broke programmatic control of actuator outputs, which has not yet been resolved
+        - [`DO_SET_ACTUATOR`](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_ACTUATOR) MAVLink commands [are planned](https://github.com/ArduPilot/ardupilot/issues/28814) as a replacement for the old [`DO_SET_SERVO`](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_SET_SERVO) commands (which required knowing the channel number of the output)
+
+## Release notes
+- [ ] Update master to include [the release notes](https://github.com/ArduPilot/ardupilot/blob/Sub-4.5/ArduSub/ReleaseNotes.txt) from the various 4.5 versions that have been released
+    - Some of these are related to the features that need forward-porting, so it likely doesn't make sense to bring them through until those features are also available in master (and there'll likely be one for 4.5.7 with the leak/relay details)","['Sub', 'ReleaseAdmin']",0
+ArduPilot/ardupilot,Copter SITL Webots-Python: iris.parm incompatible with current pre-arm validation,"## Bug report
+
+**Issue details**
+
+Please take these findings with a grain of salt.
+
+When using ArduCopter SITL with the Webots `webots-python` model and the provided `iris.parm`, I am seeing inconsistent and sometimes blocking pre-arm behavior on newer commits. The same workflow and Webots world arm and fly reliably when rolling back to the previous commit.
+
+On the newer commit, arming is frequently blocked by pre-arm checks and parameter validation errors, such as:
+
+* `Bad parameter: ATC_RAT_RLL_I must be > 0`
+* `PreArm: Check ACRO_BAL_ROLL/PITCH`
+* `Arm: Accels inconsistent`
+
+Arming behavior is inconsistent between runs. Sometimes the vehicle arms, sometimes it does not, even with the same setup. Once armed, the vehicle flies normally in Webots.
+
+Rolling back to the immediately previous commit resolves all issues without any manual parameter changes, which suggests a regression or a parameter compatibility issue rather than a Webots model problem.
+
+**Version**
+
+ArduCopter V4.7.0-dev
+Issue observed on the latest commit at time of testing.
+Rolling back to the previous commit restores reliable arming behavior.
+
+**Platform**
+
+[  ] All
+[  ] AntennaTracker
+[x] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+
+Quad / X (Webots Iris)
+
+**Hardware type**
+
+SITL using Webots (`webots-python` model)
+
+**Logs**
+
+Console and QGroundControl messages observed on the affected commit include:
+
+* `Bad parameter: ATC_RAT_RLL_I must be > 0`
+* `PreArm: Check ACRO_BAL_ROLL/PITCH`
+* `Arm: Accels inconsistent`
+
+No crashes observed. Once armed, flight behavior appears normal.
+",[],0
+ArduPilot/ardupilot,"Copter: Dijkastras may get stuck if ""Allow fast waypoints"" options is enabled and WPNAV_RADIUS > 2 and","If users set the OA_OPTIONS bit ""Allow fast waypoints"" and set WPNAV_RADIUS > 2 the vehicle may get stuck as it flies a path provided by Dijkstras (e.g. a path around a fence)
+
+The core problem is that [OA_PathPlanner](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OAPathPlanner.h) is responsible for returning the next two waypoints that the vehicle should fly to but it doesn't know when AC_WPNav has actually completed these waypoints.  [The code here](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OADijkstra.cpp#L224) tries to figure this out using the vehicle's current location but it assumes the vehicle will come within 2m of the point which it may actually not if ""allow fast waypoints"" is enabled.
+
+The problematic [line is here](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OADijkstra.cpp#L224) and copied below
+
+`const bool near_oa_wp = current_loc.get_distance(destination_new) <= 2.0f;`
+
+Here's an example mission and fence that exhibits the problem.  When the vehicle RTLs at the end
+<img width=""813"" height=""688"" alt=""Image"" src=""https://github.com/user-attachments/assets/22935e39-b5e8-4a8d-968b-dd5edb6bd7db"" />
+
+The proper solution is not as simple as just passing in the WPNAV_RADIUS to Dijkstras though because while this parameter sets an **upper limit** on how far the vehicle may fly from the waypoint, the vehicle normally flies closer than this.  In fact a user could set the WPNAV_RADIUS = 100m and still the vehicle would fly quite close to the waypoints.  In this case if Dijkstras used 100m it would consider intermediate points complete far too early and would likely cut corners which could lead to breaching the fence.
+
+I think the proper solution is to improve the interface between [AP_OAPathPlanner::mission_avoidance()](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OAPathPlanner.cpp#L196) and [AP_OADijkstra::update()](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OADijkstra.cpp#L50) (which is currently passing back and forth [avoidance_info stuctures](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_Avoidance/AP_OAPathPlanner.h#L98)) so that Dijkstras provides not just the next two intermediate points but instead the entire path around the obstacle.
+
+Then [AC_WPNav_OA](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_WPNav/AC_WPNav_OA.h) should hold onto this path and take responsibility for feeding the next two points into the [AC_WPNav base class](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_WPNav/AC_WPNav.h).  AC_WPNav_OA can do this better than Dijkstras because it can keep track of where the vehicle is along the path by calling the base classes's [reached_wp_destination()](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_WPNav/AC_WPNav.h#L240C18-L240C40) method
+
+BTW, I've done some work in [this PR to restructure Dijkstras](https://github.com/ArduPilot/ardupilot/pull/28542).  We should consider merging this restructure to master and converting AC_Avoidance to always use meters before trying to resolve this issue.","['BUG', 'Safety', 'Library']",0
+ArduPilot/ardupilot,AC_PrecLand LOCAL_FRD support yaw rotation sign error,"## Bug report
+
+**Issue details**
+
+It appears that there is a sign error on the recently introduced support for LOCAL_FRD MAV_FRAME in the AC_PrecLand module. From my perspective it seems that ""_inertial_data_delayed->Tbn"" describes the rotation quaternion from the Body Frame to the NED frame. To rotate BODY_FRD (the previous, well tested MAV_FRAME used in AC_PrecLand) we rotate the FRD unit vector by the _intertial_data_delayed->Tbn quaternion to get NED Frame.
+
+When doing this for LOCAL_FRD (which is yaw only, gravity aligned so no roll/pitch) we extract the Euler rotations from the BODY->NED quaternion and rotate by the Yaw only. This is correct, except that we are using rotate_xy( **-** yaw) which I believe to be incorrect.
+
+I have flight-tested and proved this issue by changing my precision landing sensor from BODY_FRD (working) to LOCAL_FRD. Changing to this MAV_FRAME within the LANDING_TARGET message causes divergent behaviour any time the Copter is not aligned with North. If I remove the negative sign from the line below, I get comparable behaviour with BODY_FRD which is expected, as these are both body-yaw aligned frames.
+
+Line in question:
+https://github.com/ArduPilot/ardupilot/blob/master/libraries/AC_PrecLand/AC_PrecLand.cpp#L674
+
+The functionality for LOCAL_FRD support was added in this PR: https://github.com/ArduPilot/ardupilot/pull/30446
+
+I believe there also must be an issue in the Simulation environment somewhere as this issue was clearly not picked up during the pull request completion.
+
+**Version**
+V4.7.0-dev | any version past the above linked PR.
+
+**Platform**
+Observed on Copter, assumed present on all.
+[ X ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+X4 Quad - Hexsoon 450 EDU.
+
+**Hardware type**
+Cube Orange Plus
+
+**Logs**
+N/A currently.
+",[],0
+ArduPilot/ardupilot,sanity check for MAV_CMD_NAV_RETURN_TO_LAUNCH in AP_Mission,"## Feature request
+
+Add sanity check case for the `MAV_CMD_NAV_RETURN_TO_LAUNCH` command.
+
+**Is your feature request related to a problem? Please describe.**
+Sanity check of a `MAV_CMD_NAV_RETURN_TO_LAUNCH`  command parameters sent from `mavsdk` produces an `INVALID_PARAM1`.
+
+https://github.com/ArduPilot/ardupilot/blame/a3f5193c751452d03a3d8783c67c57d985db639f/libraries/AP_Mission/AP_Mission.cpp#L1013
+
+**Describe the solution you'd like**
+I'm not sure which implementation of the standard is correct; however, if the [parameteres in the structure are supposed to be empty](https://mavlink.io/en/messages/common.html#MAV_CMD_NAV_RETURN_TO_LAUNCH) then is it necessary to check the parameters are not NaN?
+
+I think adding a case in 
+
+https://github.com/ArduPilot/ardupilot/blob/c40bd1e8d5e1f0ba692d7069d83264a575d402d3/libraries/AP_Mission/AP_Mission.cpp#L1016-L1041
+
+for MAV_CMD_NAV_RETURN_TO_LAUNCH and assigning `nan_mask = 0xf0` would be an ok compromise?
+
+**Describe alternatives you've considered**
+I've tried from the other side, i.e. MAVSDK, but the values are hard-coded in the implementation.
+
+https://github.com/mavlink/MAVSDK/blob/de36b0d7d21c2db85f7daf7423f32840b4b31a57/src/mavsdk/plugins/mission/mission_impl.cpp#L612-L630
+
+**Platform**
+[ x ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+",[],0
+ArduPilot/ardupilot,ALT_OFFSET error when commanding waypoint/flight mode,"## Bug report
+
+**Issue details**
+
+In summary, in ArduPlane, if you have the parameter ALT_OFFSET set (to say climb 300 meters), when you go to command the aircraft to a waypoint, TECS will somehow double the ALT_OFFSET leading to risk of an altitude excursion. Was able to replicate in SITL. I don't know if this is due to misuse of ALT_OFFSET, or if it's a bug with how it's interpretted
+
+Additional information: When in an autonomous mission using ALT_OFFSET to change a mission altitude, vehicle climbs to target altitude without issue. However, when commanding the vehicle to a waypoint, or a flight mode change (circle/loiter), vehicle will enter a target altitude double ALT_OFFSET until vehicle reaches said waypoint, and then returns to the ALT_OFFSET. Risks causing altitude limit breach unless safeguard system used. Further testing will be done to determine if geofence can trip to RTL and return vehicle to ALT_OFFSET target altitude, or if commanding RTL will return vehicle to ALT_OFFSET target altitude. 
+
+Video of SITL preliminary demo: https://www.youtube.com/watch?v=IEYJDMH2tpw
+
+Can hop on a dev call to discuss further
+ 
+
+**Version**
+4.2.3 live vehicle, 4.7.0 MissionPlanner SITL Plane, presumed affecting all fixed-wing (and rotary wing?) from 4.2.X to latest 
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[ ?] Copter
+[ X] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+Conventional Pusher Fixed-Wing, SITL Plane vehicle 
+
+**Hardware type**
+CubeOrange, MissionPlanner SITL on Windows 11 
+
+**Logs**
+Edit: log post attempt: 
+
+<!-- Failed to upload ""00000025.log"" -->
+
+","['BUG', 'Plane']",0
+ArduPilot/ardupilot,"AP_TemperatureSensor_MLX90614: only reading ambient temp, not object temp - no indication in Wiki","While using the MLX90614 Sensor i noticed the same issue that @peterbarker noted in his merging comment: a bit low, and very long time constants. Only after holding hot soldering iron directly in front of the sensor, but the readings only changing slightly I figured there must be something seriously wrong. 
+
+so i did some digging and sure enough, the driver only reads the internal (ambient) temp of the sensor, not the temp of the object https://github.com/ArduPilot/ardupilot/blob/a8b57dceadca306aabb3fcc351e3be4a411e5f49/libraries/AP_TemperatureSensor/AP_TemperatureSensor_MLX90614.cpp#L42C45-L42C56
+
+Which is fine, but not what i would expect when using an infrared temp sensor. Also this is not noted in the wiki or elsewhere. 
+
+My suggestion would be to add a config param to switch between the ambient temp and object temp - or to just use the object temp as default.
+
+What are your thoughts? I can make a PR after some discussion.
+
+
+> I've tested this rebased against master (https://github.com/ArduPilot/ardupilot/pull/28143) and it seems to work as expected.
+> 
+> Maybe reading a bit low?
+> 
+> Very long time constants?
+> 
+> Merging, thanks!
+>_Originally posted by @peterbarker in https://github.com/ArduPilot/ardupilot/pull/26886#pullrequestreview-2312088218_
+            ",['BUG'],0
+ArduPilot/ardupilot,Feature request: Add Linux Mint “zara” codename mapping to install-prereqs.sh,"## **Is your feature request related to a problem? Please describe.**
+
+The prerequisites installation script (`install-prereqs-ubuntu.sh`) does not currently recognize the Linux Mint codename **“zara”**, which corresponds to Linux Mint 22.2. When running the script on Mint “zara”, it fails during release detection with:
+
+```
+Unable to map zara to an Ubuntu release.
+```
+
+Because the script cannot translate the Mint codename to the correct Ubuntu base, installation halts prematurely.
+
+## **Describe the solution you'd like**
+
+Add a translation entry for Linux Mint **“zara” → Ubuntu “noble” (24.04)** within the existing Mint-to-Ubuntu mapping block:
+
+```
+linuxmint)
+    case ${RELEASE_CODENAME} in
+        wilma | xia | zara)
+            RELEASE_CODENAME='noble'
+            ;;
+```
+
+This ensures the script correctly detects the system and proceeds with the expected package installation.
+
+## **Describe alternatives you've considered**
+
+* Editing the script locally (works, but not ideal for other Mint users).
+* Allowing users to manually override the Ubuntu codename (would require additional script logic).
+* Failing early with a more descriptive message (does not solve the underlying mapping problem).
+
+Adding the proper Mint → Ubuntu mapping is consistent with existing behavior and previous merged PRs.
+
+## **Platform**
+
+[ x ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+## **Additional context**
+
+Linux Mint “zara” (22.2) is based on Ubuntu 24.04 (“noble”), as documented on the Mint website:
+[https://www.linuxmint.com/download_all.php](https://www.linuxmint.com/download_all.php)
+
+I have tested the fix locally and confirmed that installation completes successfully after adding the mapping. A pull request with the change is ready to be submitted.
+",[],0
+ArduPilot/ardupilot,AP_SCRIPTING: mavlink:send_chan() returns false intermittently,"## Bug report
+
+**Issue details**
+
+Hi, I'm trying to get send a command_long to another component (winch) on my aircraft. My ""winch"" is a nucleo32 that is listening for commands addressed to it. I have a lua script set up so that upon flipping a switch on my RC the script will see the change and send a command to the winch.
+The problem I am having is that the mavlink:send_chan() function doesn't always send the message (and returns false). My nucleo can see every gcs:send_text() and can see that the lua script just doesn't send the command.
+
+I have currently implemented a small workaround that just continually calls the send_chan function with the same parameters until it returns true (or reaches a stopping point) (And this still fails sometimes and no command is sent).  I'm pretty new to coding using the ardupilot scripting and I assume this isn't normal behavior for send_chan().  
+
+**Version**
+V4.6.2
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[ x] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+Fixed-Wing
+
+**Hardware type**
+CubeOrangePlus
+
+**Logs**
+Here is my function responsible for sending the command:
+```function send_command(target_system, target_component, cmd, ...)
+    -- Unpack parameters
+    local params = {}
+    local vargs = {...}
+    for _, i in ipairs(vargs) do
+        table.insert(params, i)
+    end
+
+    local msgid, message = mavlink_msgs.encode(""COMMAND_LONG"", {
+    param1 = params[1] or 0,
+    param2 = params[2] or 0,
+    param3 = params[3] or 0,
+    param4 = params[4] or 0,
+    param5 = params[5] or 0,
+    param6 = params[6] or 0,
+    param7 = params[7] or 0,
+    command = cmd,        -- MAVLink command ID
+    target_system = target_system,        -- Target system
+    target_component = target_component,     -- Target component
+    confirmation = 0         -- 0 for no confirmation
+    })
+
+    -- Send the message
+    gcs:send_text(MAV_SEVERITY_INFO, ""CommandL msg: "" .. tostring(message))
+    if not message then
+        gcs:send_text(MAV_SEVERITY_ERROR, ""Failed to encode COMMAND_LONG message."")
+        return
+    end
+    gcs:send_text(MAV_SEVERITY_INFO, string.format(""Sending command on channel %d (msgid=%d)"", MAVLINK_CHANNEL, COMMAND_LONG_ID))
+    local ok = false
+    local attempt = 0
+    while not ok do
+        ok = mavlink:send_chan(MAVLINK_CHANNEL, COMMAND_LONG_ID, message) -- Sometimes returns false for whatever reason
+
+        if ok then
+            return
+        else
+            gcs:send_text(MAV_SEVERITY_ERROR, ""Failed to send command, retrying..."")
+            attempt = attempt + 1
+            if attempt >= 100 then
+                gcs:send_text(MAV_SEVERITY_ERROR, string.format(""Failed to send command after %d attempts."", attempt))
+                break
+            end
+        end
+    end
+
+    gcs:send_text(MAV_SEVERITY_INFO, ""mavlink:send_chan returned: "" .. tostring(ok))
+end
+```
+My logs I see back through my nucleo via my serial port look like this:
+```
+15:27:17.330 -> I: Status severity: 6, Text: Sending command to retract winch.
+15:27:17.376 -> I: Recieved a status_text msg
+15:27:17.376 -> I: Status severity: 6, Text: Sending command on channel 2 (msgid=76)
+15:27:22.921 -> I: Recieved a status_text msg
+15:27:22.967 -> I: Status severity: 3, Text: Failed to send command, retrying...
+...
+15:28:06.980 -> I: Status severity: 3, Text: Failed to send command, retrying...
+15:28:06.980 -> I: Recieved a status_text msg
+15:28:07.012 -> I: Status severity: 3, Text: Failed to send command after 100 attempts.
+15:28:07.012 -> I: Recieved a status_text msg
+15:28:07.012 -> I: Status severity: 6, Text: mavlink:send_chan returned: false
+15:28:09.638 -> I: Recieved a status_text msg
+15:28:09.676 -> I: Status severity: 6, Text: Sending command to extend winch.
+15:28:09.676 -> I: Recieved a Command Long
+15:28:09.676 -> I: CommandLong: trgt sys: 1
+15:28:09.676 -> I: CommandLong: trgt comp: 169
+15:28:09.676 -> I: Command recieved: 42600
+15:28:09.676 -> I: Recieved command to move winch, passing to winch...
+15:28:09.676 -> I: Winch action: RATE_CONTROL
+15:28:09.796 -> I: Recieved a status_text msg
+15:28:09.829 -> I: Status severity: 6, Text: CommandL msg: 
+15:28:09.829 -> I: Recieved a status_text msg
+15:28:09.863 -> I: Status severity: 6, Text: Sending command on channel 2 (msgid=76)
+15:28:09.909 -> I: Recieved a status_text msg
+```
+",['Scripting'],0
+ArduPilot/ardupilot,Support RTL_ALTITUDE when using RTL_AUTOLAND,"## Feature request
+
+We have a fixed-wing plane which has a complicated landing sequence, which forces us to always land in AUTO mode using `RTL_AUTOLAND` parameter. However, this means that `RTL_ALTITUDE` is ignored, since the vehicle always proceeds to the first waypoint after `MAV_CMD_DO_LAND_START`. I also need a way to support ""return at current altitude"", set when parameter is equal to -1.
+The landing sequence contains `MAV_CMD_NAV_LOITER_TO_ALT` at 50m AGL which is required for final approach, but the plane glides to it in a straight descending line, potentially crashing into terrain.
+
+*I would like the vehicle to complete the RTL route on altitude set in `RTL_ALTITUDE` parameter, also when landing in AUTO mode, and only descend when close to landing sequence.*
+
+**Workaround**
+By adding a `MAV_CMD_NAV_WAYPOINT` after `MAV_CMD_DO_LAND_START` and before `MAV_CMD_NAV_LOITER_TO_ALT`, I can adjust the return altitude on this mission item, and have the plane climb to it immediately by setting bit 14 of `FLIGHT_OPTIONS`. I am including the Lua function below.
+
+The problem is, that **this script needs to reliably detect when RTL mode is triggered** to update the waypoint. When using `RTL_AUTOLAND` the vehicle switches to AUTO immediately, and I might miss it between the calls of the script. When changing the mode from GCS, I can listen to `MAV_CMD_DO_SET_MODE`, but can't detect RTL triggered by another script or RC transmitter. Finally, I can't simply look at the index of current waypoint, because I don't want to climb to RTL altitude when mission proceeds to landing sequence as planned.
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[x ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+I'd be happy to contribute either a reliable way to detect RTL in Lua when using Automatic landing or some more involved behaviour for RTL, as preferred by the dev team.
+
+I searched the issues for `RTL_AUTOLAND` and `RTL_ALTITUDE` but didn't find anything with both for my use case. There's a thread [Altitude behaviour on RTL using DO_LAND_START with RTL_AUTOLAND=2](https://discuss.ardupilot.org/t/altitude-behaviour-on-rtl-using-do-land-start-with-rtl-autoland-2/83922) which confirms that adding a waypoint is the way to do it.
+
+```lua
+-- Update first waypoint of landing sequence to recreate RTL_ALTITUDE behavior in AUTO
+-- 
+-- This must be called every time the vehicle enters RTL. Because the altitude target is specified
+-- as a regular waypoint with large acceptance radius, the vehicle might not reach it if it's already close.
+-- Note that if RTL is switched into AUTO and vehicle continues the mission it will fly to RTL altitude,
+-- this can be reset to original value by reuploading the mission plan from GCS.
+local function update_rtl_altitude()
+    local doland_idx = find_do_land_start_index()
+    if not doland_idx then
+        return
+    end
+
+    local rtl_idx = doland_idx + 1
+    local rtl_item = mission:get_item(rtl_idx)
+    if (not rtl_item) or rtl_item:command() ~= MAV_CMD_NAV_WAYPOINT then
+        return
+    end
+
+    local rtl_altitude = RTL_ALTITUDE:get()
+    if not rtl_altitude then
+        return
+    end
+
+    if rtl_altitude == -1 then
+        local current_rel_alt = -ahrs:get_relative_position_D_home()
+        rtl_item:z(current_rel_alt)
+    else
+        rtl_item:z(rtl_altitude)
+    end
+
+    -- Never write altitude smaller than 50 m
+    if rtl_item:z() < 50 then
+        rtl_item:z(50)
+    end
+    -- Ensure the altitude is relative to home like the parameter
+    rtl_item:frame(MAV_FRAME_GLOBAL_RELATIVE_ALT)
+
+    mission:set_item(rtl_idx, rtl_item)
+    gcs:send_text(MAV_SEVERITY.NOTICE, string.format(""Doing RTL at %.0f m (REL)"", rtl_item:z()))
+
+    -- If already flying there, update the navigation target after mission was modified
+    if mission:get_current_nav_index() == rtl_idx then
+        mission:set_current_cmd(rtl_idx)
+    end
+end
+```
+
+*Contribution on behalf of @FlyfocusUAV*",[],0
+ArduPilot/ardupilot,Copter: Ch6 tuning of WP Speed overshoots during the beginning of the first leg,"Copter supports transmitter based tuning ([see wiki here](https://ardupilot.org/copter/docs/common-transmitter-tuning.html)) including the ability to adjust the speed during auto missions.  Unfortunately it seems this doesn't take effect immediately when auto starts so the vehicle will overspeed in the first segment of the mission.
+
+The issue can be reproduced in SITL with AP-4.7.0-dev (or higher) by doing the following:
+
+1. param set RC6_OPTION 219 (Transmitter Tuning)
+2. param set TUNE 10 (WP Speed)
+3. param set TUNE_MIN 100 (1m/s)
+4. param set TUNE_MAX 1000 (10m/s)
+5. param set AUTO_OPTIONS 3 (allow arming and takeoff in Auto mode)
+6. create an auto mission with long segments (e.g. a big square)
+7. auto
+8. arm throttle
+9. rc 6 1000
+
+The vehicle should fly at 1m/s but instead it will fly at up to 6m/s for the first segment before slowing to 1m/s
+
+This issue was found as part of the investigation of [this user report](https://discuss.ardupilot.org/t/copter-4-6-3-released/140596/29).","['BUG', 'Copter']",0
+ArduPilot/ardupilot,"Copter parameter conversion from cm, cd to m and degrees","ANGLE_MAX
+  -> PILOT_ANGLE_MAX
+  -> ATC_ANGLE_MAX
+
+ATC_ACCEL_P_MAX
+-> ATC_CMD_ACCEL_P
+
+ATC_ACCEL_R_MAX 
+-> ATC_CMD_ACCEL_R
+
+ATC_ACCEL_Y_MAX 
+-> ATC_CMD_ACCEL_Y
+
+Future PR correction acceleration limits (currently hard-coded to half the command model):
+ATC_CORR_A_P_MAX
+ATC_CORR_A_R_MAX
+ATC_CORR_A_Y_MAX
+ATC_CORR_ACCEL_P
+ATC_CORR_ACCEL_R
+ATC_CORR_ACCEL_Y
+
+ATC_SLEW_YAW
+  -> WP_Y_RATE_MAX
+  -> ATC_AUTO_YAW_MAX
+  -> ATC_SLEW_YAW_MAX
+
+AVOID_ANGLE_MAX -> AVOID_ANGLE_LIM
+
+BARO_ALTERR_MAX
+
+CIRCLE_RADIUS
+  -> CIRCLE_RAD
+  -> CIRCLE_RAD_M
+  -> CIRCLE_RADIUS_M
+
+LAND_ALT_LOW
+  -> LAND_ALT_LOW_M
+  -> LAND_ALT_FINAL
+
+LAND_SPEED
+  -> LAND_SPEED_M
+  -> LAND_SPEED_FINAL
+  -> LAND_SPD
+  -> LAND_SPD_LOW
+  -> LAND_SPD_M
+  -> LAND_SPD_FINAL
+
+LAND_SPEED_HIGH
+  -> LAND_SPD_HIGH
+  -> LAND_SPD_HIGH_M
+  -> LAND_SPD_HI
+
+LOIT_ACC_MAX
+  -> LOIT_ACC_MAX_M
+  -> LOIT_ACC_M
+  -> LOIT_ACC
+
+LOIT_BRK_ACCEL
+  -> LOIT_BRK_ACCEL_M
+  -> LOIT_ACCEL_BRK
+
+LOIT_BRK_JERK
+  -> LOIT_BRK_JERK_M
+  -> LOIT_JERK_BRK
+
+LOIT_SPEED
+  -> LOIT_SPEED_M
+  -> LOIT_SPD
+  -> LOIT_SPD_M
+
+MOT_YAW_HEADROOM
+  -> MOT_YAW_RESERVE
+  -> MOT_YAW_RES
+  -> MOT_YAW_HEAD
+(note: currently PWM-based, needs normalisation)
+
+PHLD_BRAKE_ANGLE -> PHLD_BRK_ANGLE
+PHLD_BRAKE_RATE  -> PHLD_BRK_RATE
+
+Possible prefix change: PILOT -> PLT
+
+PILOT_ACCEL_Z
+  -> PILOT_ACC_Z
+  -> PILOT_ACCEL_Z_M
+
+PILOT_SPEED_DN
+  -> PILOT_SPD_DN
+  -> PILOT_SPD_DN_M
+  -> PILOT_SPEED_DN_M
+
+PILOT_SPEED_UP
+  -> PILOT_SPD_UP
+  -> PILOT_SPD_UP_M
+  -> PILOT_SPEED_UP_M
+
+PILOT_TKOFF_ALT
+  -> PILOT_TKOFF_ALTM
+  -> PILOT_TKO_ALT_M
+
+PILOT_Y_RATE
+
+RTL_ALT
+  -> RTL_ALT_MIN
+  -> RTL_ALT_M
+
+RTL_ALT_FINAL
+  -> RTL_ALT_STOP
+  -> RTL_ALT_HOVER
+  -> RTL_ALT_FINAL_M
+
+RTL_CLIMB_MIN
+  -> RTL_CLIMB_MIN_M
+  -> RTL_CLMB_MIN
+
+RTL_SPEED -> RTL_SPD
+
+WPNAV -> WP
+
+WPNAV_ACCEL
+WPNAV_ACCEL_C
+WPNAV_ACCEL_Z
+WPNAV_RADIUS
+WPNAV_SPEED
+WPNAV_SPEED_DN
+WPNAV_SPEED_UP
+","['Copter', 'FeatureRequest']",0
+ArduPilot/ardupilot,BDShot FW on IOMCU (F103) of newer Pixhawk 2.4.8 doesn't work,"## Bug report
+
+**Issue details**
+
+Setting BRD_IO_DSHOT on a Pixhawk 2.4.8 with F103 co-processor fails to load the dshot firmware onto it and soft-bricks (solid amber iomcu indicator, no ACT indicator, IOMCU unhealthy message)
+Normally, the Messages tab shows iomcu: 0 0 411FC231
+ but when bricked, it shoes iomcu: 0 0 0
+
+**Version**
+4.6.2, 4.6.3
+stock Pixhawk-bdshot
+
+**Platform**
+[ x ] Copter
+
+**Airframe type**
+Quad
+
+**Hardware type**
+Pixhawk 2.4.8
+
+**Logs**
+N/A",[],0
+ArduPilot/ardupilot,ArduPilot doesn't start on some boards with PX4 bootloader,"## Bug report
+
+**Issue details**
+
+ArduPilot doesn't start (immediately crashes) on STM32H7 boards where a PX4 bootloader is used. You can see the bootloader appear on USB and then disappear after a few seconds, and nothing happens after that.
+
+Also see proposed (likely wrong) fix and discussion in https://github.com/ArduPilot/ChibiOS/pull/98.
+
+FYI: @tpwrules, @andyp1per, @bugobliterator 
+
+**To reproduce:**
+
+1. Backup AP parameters in case you don't want to lose them!
+2. Flash PX4 (e.g use QGroundControl and flash PX4 firmware. (It says stable 1.16 but in fact installs 1.17alpha1, which works to install the bootloader anyway)
+3. In QGC, go to Analyze Tools -> MAVLink Console and run `bl_update /etc/extras/cubepilot_cubeorange_bootloader.bin` for CubeOrange or `bl_update /etc/extras/cubepilot_cubeorangeplus_bootloader.bin` for CubeOrange+.
+(Alternatively, you can set param `SYS_BL_UPDATE` to `1` (Enabled) and reboot the board, however, this only works with 1.17/main but not 1.16 or 1.15 where it is broken.)
+4. Flash ArduPilot
+
+**Version**
+ArduCopter 4.6.3 (and previous)
+
+**Platform**
+[ x] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+N/A
+
+**Hardware type**
+Likely all STM32H7, e.g. CubeOrange, CubeOrange+ 
+
+**Logs**
+N/A
+",[],0
+ArduPilot/ardupilot,STM32F412CGU6  bootloader USB no recognition,"Recently, while testing bootloaders and applications for the F412 series, I found that the USB port was not working properly.",[],0
+ArduPilot/ardupilot,No Parameter Length Validation at build,"## Bug report
+
+**Issue details**
+
+When you define a parameter with a name (including the full prefix chain) that's longer than 16 characters, everything compiles fine and the firmware uploads without any warnings. But then the autopilot just crashes silently during startup when it tries to initialize the parameters. There's no error message, no indication of what went wrong - it just fails back to boot loader.
+
+The AP_MAX_NAME_SIZE limit of 16 chars makes sense, but the build system should catch this before you even get to the upload stage.
+
+**Version**
+
+Master branch (current as of 13NOV25)
+
+**Platform**
+
+[X] All
+
+**Airframe type**
+
+Affects all airframe types - this is a build/parameter system issue
+
+**Hardware type**
+
+Tested on various STM32 builds (ie Cube Orange, custom Periph Hardware etc)
+
+**Logs**
+
+No useful logs which was a part of the difficulty in finding this bug - Could pull GDB etc, but the issue is pretty clearly that the user defined Parameter name out of bounds is triggering watchdog loop back to boot loader.",[],0
+ArduPilot/ardupilot,Leverage pending Ardupilot gimbal features to gimbal manager V2 mavlink sub-protocol,"Following the conversation https://github.com/ArduPilot/ardupilot/pull/23092, It seems there are some Ardupilot gimbal features that do not have any way to be triggered and monitored using gimbal manager v2 sub-protocol.
+
+Adding them would allow for very nice GCS integrations like we already have for the rest of gimbal features. So far I think the only feature remaining would be:
+
+- Track with gimbal another vehicle system ID.
+- Track with gimbal home position.
+
+If there is any other feature not supported please let me know and we can add it to the list. Whenever we all are happy with the pending features to work over, I will work on them in all fronts, Ardupilot, mavlink and QGC.","['Enhancement', 'Gimbal', 'Camera']",0
+ArduPilot/ardupilot,Valgrind error in AP_Mission_ChangeDetector,"During the implementation of ARC Waypoints (PR: https://github.com/ArduPilot/ardupilot/pull/31139) we found that Valgrind complains about [AP_Mission_ChangeDetector](https://github.com/ArduPilot/ardupilot/blob/master/libraries/AP_Mission/AP_Mission_ChangeDetector.h) using uninitialised variables.
+
+We have a PR here that includes an autotest that fails due to the issue https://github.com/ArduPilot/ardupilot/pull/31492
+
+I suspect the issue is actually very rare and innocuous but we should still investigate and fix it",[],0
+ArduPilot/ardupilot,After upgrading to arduplane 4.6.x GPS bitrate 115k can't be enforced by option.,"## Bug report
+
+**Issue details**
+
+In Arduplane 4.6.x stopped working option GPS_DRV_OPTION=4 (bitmask xxxxx1xx) to enforce GPS bitrate 115200.
+This can be because parameter GPS_TYPE was removed in 4.6.3
+In versions 4.5 and lower it was necessary to set GPS_TYPE=2 (ublox) to make GPS_DRV_OPTION=4 work (even it's not logical, it didn't work with autodetection, only with fixed GPS type.)
+I'm using a GPS beacon ""sniffing"" on the GPS data which can't  work with bitrate higher than 115k.
+
+Long time ago discussed here: https://discuss.ardupilot.org/t/is-it-possible-to-limit-maximal-negotiated-gps-serial-bitrate-tbeacon-stopped-working-after-upgrading-to-plane-4-2/88011
+Then I found that GPS_TYPE=2 is needed so I set it like this and it worked ... until 4.6.
+
+**Version**
+Arduplane 4.6.3 bdshot
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[  ] Copter
+[ X] Plane
+[  ] Rover
+[  ] Submarine
+
+**Airframe type**
+V-tail aiplane
+
+**Hardware type**
+Matek F405 Wing bdshot
+
+**Logs**
+
+",[],0
+ArduPilot/ardupilot,AP_DDS: add vicon pose information input,"## Feature request
+
+**Is your feature request related to a problem? Please describe.**
+Motion Capture System is always used to provide pose information for copters in indoors environment. Even mavproxy offers a module to get pose information form Vicon and send to ardupilot, the ROS2 support is still needed as users can do the close-loop completely in ROS2. 
+
+**Describe the solution you'd like**
+ardupilot is subscribed to the topic `/vision/pose` and takes pose information from that to update.
+
+**Describe alternatives you've considered**
+_A clear and concise description of any alternative solutions or features you've considered._
+
+**Platform**
+[  ] All
+[  ] AntennaTracker
+[X] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+**Additional context**
+_Add any other context or screenshots about the feature request here._
+",[],0
+ArduPilot/ardupilot,DSHOT issue with Ardu using 4in1 BLS ESC,"Hey! Having issues getting motors to run on a quad build with the SIYI N7 + 4-in-1 BLS ESC.
+
+Video, gimbal control, telemetry, and RC link work fine, only motors don’t spin.
+
+Hardware: N7 FC, SIYI GPS A8 Mini, HGLC BLS 4-in-1 ESC 60A 
+
+Firmware: ArduCopter 4.5.7 / Quadcopter 
+
+What happens:
+• When I move motor outputs from MAIN 1–4 → AUX 1–4, ESCs initialise
+• After reboot, servo outputs reset to 0 and motors stop responding. (photo below)
+• ESC does not initialise, no beep tone. 
+
+Tried:
+• AUX1–4 for motors, MAIN disabled/GPIO
+• DShot600, BLHeli autodetect, BLHeli32 mode
+• Reset params → only set PWM=DShot
+• Set servo outputs 9–13 as motors
+• New N7, and HolyBro 6C FC + ArduCopter 4.5.7 (same problem)
+• Changed ESC from BL32 to BLS (same problem)
+• ESC/motors confirmed working on Betaflight
+• Spent a week going through threads, chatted with SIYI directly, discord channel and have been referred to submit here, still no progress. Maybe a bug??
+
+Anyone run DShot and had this happen? Any tips appreciated! :-) 
+
+Param file attached. 
+
+<img width=""675"" height=""537"" alt=""Image"" src=""https://github.com/user-attachments/assets/e1ade8f5-8b63-4711-ad79-04c643066fb1"" />
+
+[ArduPilot DSHOT Issue.param.zip](https://github.com/user-attachments/files/23431042/ArduPilot.DSHOT.Issue.param.zip)
+
+",[],0
+ArduPilot/ardupilot,DroneCAN Deadlock in dronecan_0 Thread on CubeRed Hardware,"<img width=""470"" height=""464"" alt=""Image"" src=""https://github.com/user-attachments/assets/33d31672-fdb3-4f64-9e56-342adb5253f5"" />
+
+## Bug report
+
+**Setup**
+[1] Mavproxy connecting to Cube Red via TCP connection and forwarding via out=udp:127.0.0.1:14550 onto my local machine
+[2] DroneCan GUI Tool connected via MavCAN connection
+[3] Cube Red configured as TCP server on LWIP stack
+
+**Issue details**
+Critical deadlock detected in the dronecan_0 thread (error code 83, 0x20000010) causing internal errors (0x8000) on CubeRed hardware. The deadlock appears to be related to a potential lock ordering issue in the DroneCAN pipeline. Issue is repeatable and occurs when using DroneCAN GUI Tool connected via MavCAN with MAVProxy forwarding TCP connections from a Cube Red configured as TCP server on LWIP stack.
+
+**Version**
+master
+
+**Platform**
+Discovered on Rover/Boat, but likely on All
+[?] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[X] Rover
+[  ] Submarine
+
+**Airframe type**
+Boat
+
+**Hardware type**
+CubeRed
+
+**Logs**
+AP: CRITICAL Deadlock 83 dronecan_0 0x20000010
+AP: Internal Errors 0x8000
+Critical failure 0x8000 sysid=1 compid=1
+AP: CRITICAL Deadlock 83 dronecan_0 0x20000010
+Critical failure 0x8000 sysid=1 compid=1
+AP: CRITICAL Deadlock 83 dronecan_0 0x20000010
+Critical failure 0x8000 sysid=1 compid=1
+","['BUG', 'CAN']",0
+ArduPilot/ardupilot,AP_DDS: Servo Control,"It would be great to receive all the servo output telemetry and send servo commands through DDS.
+
+- `/ap/servo_out` and `/ap/servo_in` both of type `ardupilot_msgs/msg/Servo` which reports 32 channels.
+- Any channel commanded that is between 800 and 2200 is considered a valid value to command.
+- Maybe a protection in the config file to protect the first channels.
+
+**Platform**
+[ x ] All
+[  ] AntennaTracker
+[  ] Copter
+[  ] Plane
+[  ] Rover
+[  ] Submarine
+
+
+",[],0
