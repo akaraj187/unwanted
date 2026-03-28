@@ -1,0 +1,26 @@
+public class Student {
+    String name;
+    int id;
+    int age;
+    double CGPA;
+    public static String U ="KLETECH University";
+
+
+    // Constructor to initialize a Student object
+    Student(String name, int id,int age,double CGPA) {
+        this.name = name;
+        this.id = id;
+        this.age=age;
+        this.CGPA=CGPA;
+    }
+
+    // Method to display student details
+    public void display() {
+        System.out.println("Name: " + name + ", ID: " + id + "AGE:"+age +"CGPA:"+CGPA+"University:"+U);
+    }
+
+   public static void main(){
+   student s=new student("a",1,12,9);
+   s.display();
+}
+}
