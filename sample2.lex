@@ -1,3 +1,4 @@
+//Vowels And Consonants
 %{
 #include<stdio.h>
     int vct=0,naatct=0;
